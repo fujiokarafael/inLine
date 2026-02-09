@@ -1,0 +1,103 @@
+#!/bin/bash
+
+set -e
+
+BASE_URL="http://localhost:8000/api"
+
+echo ""
+echo "========================================"
+echo "   TESTE SISTEMA FESTIVAL QUEUE v2"
+echo "========================================"
+echo ""
+
+# ---------- Helpers -----pp() {
+  echo "$1" | jq .
+}
+
+# ---------- 1. Criar pratos ----------
+echo "1) Criando pratos"
+echo "--------------------------"
+
+PRATO1=$(curl -s -X POST "$BASE_URL/pratos/" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Hamburguer"}')
+
+PRATO2=$(curl -s -X POST "$BASE_URL/pratos/" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Batata Frita"}')
+
+echo "Prato 1:"
+pp "$PRATO1"
+echo "Prato 2:"
+pp "$PRATO2"
+
+PRATO1_ID=$(echo "$PRATO1" | jq -r '.id')
+
+# ---------- 2. Criar pedido NORMAL ----------
+echo ""
+echo "2) Criando pedido NORMAL no caixa"
+echo "--------------------------"
+
+PEDIDO_NORMAL=$(curl -s -X POST "$BASE_URL/orders/" \
+  -H "Content-Type: application/json" \
+  -d '{"tipo":"NORMAL"}')
+
+echo "Pedido criado:"
+pp "$PEDIDO_NORMAL"
+
+# ---------- 3. Criar pedido PREFERENCIAL ----------
+echo ""
+echo "3) Criando pedido PREFERENCIAL"
+echo "--------------------------"
+
+PEDIDO_PREF=$(curl -s -X POST "$BASE_URL/orders/" \
+  -H "Content-Type: application/json" \
+  -d '{"tipo":"PREFERENCIAL"}')
+
+echo "Pedido preferencial criado:"
+pp "$PEDIDO_PREF"
+
+# ---------- 4. Painel da cozinha ----------
+echo ""
+echo "4) Painel da cozinha (Hamburguer)"
+echo "--------------------------"
+
+PAINEL1=$(curl -s "$BASE_URL/painel/prato/$PRATO1_ID/")
+pp "$PAINEL1"
+
+# ---------- 5. Cozinha puxa próximo prato ----------
+echo ""
+echo "5) Cozinha puxa próximo prato (Hamburguer)"
+echo "--------------------------"
+
+NEXT=$(curl -s -X POST "$BASE_URL/next/")
+pp "$NEXT"
+
+FILA_ID=$(echo "$NEXT" | jq -r '.fila_id // empty')
+
+if [ -z "$FILA_ID" ]; then
+  echo "❌ Nenhum item puxado da fila"
+  exit 1
+fi
+
+# ---------- 6. Finalizando prato ----------
+echo ""
+echo "6) Finalizando prato"
+echo "--------------------------"
+
+FINAL=$(curl -s -X POST "$BASE_URL/finalizar/$FILA_ID/")
+pp "$FINAL"
+
+# ---------- 7. Painel atualizado ----------
+echo ""
+echo "7) Painel atualizado"
+echo "--------------------------"
+
+PAINEL2=$(curl -s "$BASE_URL/painel/prato/$PRATO1_ID/")
+pp "$PAINEL2"
+
+echo ""
+echo "========================================"
+echo "        TESTE FINALIZADO"
+echo "========================================"
+echo ""

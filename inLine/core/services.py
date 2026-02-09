@@ -1,60 +1,93 @@
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
-from .models import Pedido, FilaPrato, TMA, Prato
 from django.db.models import Sum
+from uuid import UUID
 
+
+from .models import Pedido, FilaPrato, TMA, Prato
+
+
+# =========================
+# CAIXA
+# =========================
 
 def create_order(tipo, itens):
     """
+    Cria um pedido com os itens fornecidos.
+
     itens = [
-      {"prato_id": UUID, "quantidade": 3},
-      {"prato_id": UUID, "quantidade": 1},
+      {"prato_id": "<UUID string>", "quantidade": 3},
+      {"prato_id": "<UUID string>", "quantidade": 1},
     ]
     """
+    if not itens:
+        raise ValueError("É necessário informar ao menos um item")
+
     with transaction.atomic():
         total = Decimal("0.00")
 
+        # Criar pedido vazio inicialmente
         pedido = Pedido.objects.create(
             tipo=tipo,
             status=Pedido.Status.PENDENTE,
             total=Decimal("0.00"),
         )
 
-        pratos = {
-            p.id: p
-            for p in Prato.objects.filter(
-                id__in=[i["prato_id"] for i in itens],
-                ativo=True,
-            )
-        }
+        # Converter IDs para UUIDs e buscar pratos ativos
+        try:
+            prato_ids = [UUID(i["prato_id"]) for i in itens]
+        except ValueError as e:
+            raise ValueError(f"UUID inválido em itens: {e}")
+
+        pratos = {p.id: p for p in Prato.objects.filter(id__in=prato_ids, ativo=True)}
 
         filas = []
 
         for item in itens:
-            prato = pratos[item["prato_id"]]
-            quantidade = item["quantidade"]
-            preco = prato.preco_atual
+            try:
+                prato_id = UUID(item["prato_id"])
+            except ValueError:
+                raise ValueError(f"UUID inválido: {item['prato_id']}")
 
+            prato = pratos.get(prato_id)
+            if not prato:
+                raise ValueError(f"Prato {prato_id} não encontrado ou inativo")
+
+            quantidade = int(item.get("quantidade", 0))
+            if quantidade <= 0:
+                raise ValueError(f"Quantidade inválida para o prato {prato_id}")
+
+            preco = prato.preco
+
+            # Criar filas para cada unidade
             for _ in range(quantidade):
                 filas.append(
                     FilaPrato(
                         pedido=pedido,
                         prato=prato,
                         preco_unitario=preco,
+                        status=FilaPrato.Status.PENDENTE
                     )
                 )
 
             total += preco * quantidade
 
+        # Criar todas as filas de uma vez
         FilaPrato.objects.bulk_create(filas)
 
+        # Atualizar total do pedido
         pedido.total = total
         pedido.save(update_fields=["total"])
 
         return pedido
 
-def get_next_prato(prato_id):
+
+# =========================
+# FILA POR PRATO (COZINHA)
+# =========================
+
+def get_next_in_queue(prato_id):
     with transaction.atomic():
 
         for tipo in (Pedido.Tipo.PREFERENCIAL, Pedido.Tipo.NORMAL):
@@ -64,7 +97,7 @@ def get_next_prato(prato_id):
                 .select_related("pedido")
                 .filter(
                     prato_id=prato_id,
-                    status="PENDENTE",
+                    status=FilaPrato.Status.PENDENTE,
                     pedido__tipo=tipo,
                 )
                 .order_by("created_at")
@@ -76,58 +109,64 @@ def get_next_prato(prato_id):
 
             venceu = (
                 FilaPrato.objects
-                .filter(id=candidato.id, status="PENDENTE")
+                .filter(id=candidato.id, status=FilaPrato.Status.PENDENTE)
                 .update(
-                    status="EM_PRODUCAO",
+                    status=FilaPrato.Status.EM_PRODUCAO,
                     started_at=timezone.now(),
                 )
             )
 
             if venceu:
-                return candidato
+                return FilaPrato.objects.select_related("pedido", "prato").get(id=candidato.id)
 
         return None
 
-def finalizar_prato_by_id(fila_prato_id):
-    from .models import FilaPrato
 
+# =========================
+# FINALIZAÇÃO DE PRATO
+# =========================
+
+def finalizar_prato_by_id(fila_prato_id):
     with transaction.atomic():
+
         atualizado = (
             FilaPrato.objects
-            .filter(id=fila_prato_id, status="EM_PRODUCAO")
+            .filter(id=fila_prato_id, status=FilaPrato.Status.EM_PRODUCAO)
             .update(
-                status="RETIRADO",
+                status=FilaPrato.Status.RETIRADO,
                 finished_at=timezone.now(),
             )
         )
 
         if not atualizado:
-            return False
+            return None
 
-        from .services import calculate_tma
-        calculate_tma()
-
-        return True
-        prato.status = "RETIRADO"
-        prato.finished_at = timezone.now()
-        prato.save()
+        prato = FilaPrato.objects.select_related("pedido", "prato").get(id=fila_prato_id)
 
         calculate_tma()
+
+        return prato
+
+
+# =========================
+# MÉTRICA TMA (janela fixa)
+# =========================
 
 def calculate_tma():
     with transaction.atomic():
+
         pratos = (
             FilaPrato.objects
             .select_for_update()
             .filter(
-                finished_at__isnull=False,
+                status=FilaPrato.Status.RETIRADO,
                 usado_em_metrica=False,
             )
             .order_by("finished_at")[:10]
         )
 
         if len(pratos) < 10:
-            return
+            return None
 
         inicio = pratos[0].started_at
         fim = pratos[-1].finished_at
@@ -143,45 +182,35 @@ def calculate_tma():
             id__in=[p.id for p in pratos]
         ).update(usado_em_metrica=True)
 
+        return media
+
+
+# =========================
+# PAINEL POR PRATO
+# =========================
+
 def get_painel_prato(prato_id, limite=50):
-    """
-    Retorna a fila da cozinha para um prato específico
-    """
-    pendentes_pref = (
-        FilaPrato.objects
-        .select_related("pedido", "prato")
-        .filter(
-            prato_id=prato_id,
-            status="PENDENTE",
-            pedido__tipo=Pedido.Tipo.PREFERENCIAL,
-        )
-        .order_by("created_at")
-    )
-
-    pendentes_normais = (
-        FilaPrato.objects
-        .select_related("pedido", "prato")
-        .filter(
-            prato_id=prato_id,
-            status="PENDENTE",
-            pedido__tipo=Pedido.Tipo.NORMAL,
-        )
-        .order_by("created_at")
-    )
-
     em_producao = (
         FilaPrato.objects
-        .select_related("pedido", "prato")
+        .select_related("pedido")
         .filter(
             prato_id=prato_id,
-            status="EM_PRODUCAO",
+            status=FilaPrato.Status.EM_PRODUCAO,
         )
-        .order_by("started_at")
+        .order_by("started_at")[:limite]
+    )
+
+    pendentes = (
+        FilaPrato.objects
+        .select_related("pedido")
+        .filter(
+            prato_id=prato_id,
+            status=FilaPrato.Status.PENDENTE,
+        )
+        .order_by("created_at")[:limite]
     )
 
     return {
-        "em_producao": list(em_producao[:limite]),
-        "pendentes": list(pendentes_pref[:limite]) + list(pendentes_normais[:limite]),
+        "em_producao": list(em_producao),
+        "pendentes": list(pendentes),
     }
-
-
