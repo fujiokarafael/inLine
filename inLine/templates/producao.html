@@ -1,0 +1,24 @@
+{% extends "base.html" %} {% load static %} {% block content %}
+<div class="bg-gray-900 min-h-screen flex flex-col p-4">
+  <header class="flex justify-between items-center mb-6 px-4">
+    <h1 class="text-white text-2xl font-bold">
+      ESTAÇÃO: <span class="text-blue-400">COZINHA CENTRAL</span>
+    </h1>
+    <div class="bg-gray-800 p-3 rounded-lg text-white">
+      <span class="text-xs block text-gray-400">FILA</span>
+      <span class="text-xl font-bold text-green-400" id="counter-pendente"
+        >0</span
+      >
+    </div>
+  </header>
+
+  <main
+    id="cards-container"
+    class="flex-1 flex gap-6 overflow-x-auto pb-4 items-start px-4"
+  >
+    <p class="text-gray-500">Conectando ao servidor...</p>
+  </main>
+</div>
+{% endblock %} {% block extra_js %}
+<script src="{% static 'js/producao.js' %}"></script>
+{% endblock %}

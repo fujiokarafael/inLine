@@ -1,0 +1,76 @@
+{% extends "base.html" %} {% load static %} {% block title %}InLine - Painel de
+Atendimento{% endblock %} {% block content %}
+<div class="flex flex-col items-center justify-center p-6 md:p-10 font-sans">
+  <div
+    class="bg-white rounded-[2rem] shadow-2xl p-8 md:p-12 text-center max-w-2xl w-full transition-all mb-12"
+  >
+    <header class="mb-6">
+      <h1
+        class="text-2xl font-medium text-slate-400 uppercase tracking-tighter"
+      >
+        Painel de Chamada
+      </h1>
+    </header>
+
+    <div
+      id="ticket-atual"
+      class="mb-8 p-10 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 relative overflow-hidden"
+    >
+      <span class="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold"
+        >Chamada Atual</span
+      >
+
+      <div
+        id="senha-display"
+        class="text-7xl md:text-9xl font-black text-blue-700 my-4 tabular-nums"
+      >
+        ---
+      </div>
+
+      <div
+        id="info-adicional"
+        class="text-slate-500 font-bold text-lg h-6"
+      ></div>
+    </div>
+
+    <button
+      id="btn-chamar"
+      onclick="chamarProximo()"
+      class="group bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white w-full py-6 rounded-2xl text-2xl font-black transition-all shadow-lg flex items-center justify-center gap-4 active:scale-95"
+    >
+      <span id="btn-text">CHAMAR PRÓXIMO</span>
+      <span class="group-hover:translate-x-2 transition-transform">➔</span>
+    </button>
+  </div>
+
+  <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-12">
+    <div>
+      <h2
+        class="text-amber-400 text-sm font-bold mb-4 uppercase tracking-[0.2em] flex items-center gap-2"
+      >
+        <span class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+        Fila de Espera (Pendentes)
+      </h2>
+
+      <div id="lista-pendentes" class="space-y-3">
+        <p class="text-slate-500 italic text-sm">Carregando fila...</p>
+      </div>
+    </div>
+
+    <div>
+      <h2
+        class="text-slate-400 text-sm font-bold mb-4 uppercase tracking-[0.2em]"
+      >
+        Últimos Chamados
+      </h2>
+
+      <div
+        id="ultimos-chamados"
+        class="grid grid-cols-2 gap-3 opacity-80"
+      ></div>
+    </div>
+  </div>
+</div>
+{% block extra_js %}
+<script src="{% static 'js/atendimento.js' %}"></script>
+{% endblock %} {% endblock %}

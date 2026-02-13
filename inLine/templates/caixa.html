@@ -1,0 +1,163 @@
+{% extends "base.html" %} {% load static %} {% block content %}
+<div class="flex h-[calc(100vh-64px)] overflow-hidden">
+  <div class="flex-1 p-6 overflow-y-auto">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">Novo Pedido</h1>
+      <a
+        href="/cadastrar-prato/"
+        class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold"
+      >
+        + Cadastrar Prato
+      </a>
+    </div>
+    <div
+      id="grid-produtos"
+      class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+    ></div>
+  </div>
+
+  <div class="w-96 bg-white shadow-xl flex flex-col p-6 border-l">
+    <h2 class="text-xl font-bold border-b pb-4">Resumo do Pedido</h2>
+
+    <div id="lista-carrinho" class="flex-1 overflow-y-auto py-4 space-y-4">
+      <p id="carrinho-vazio" class="text-gray-400 text-center mt-10">
+        Carrinho vazio
+      </p>
+    </div>
+
+    <div class="border-t pt-4 space-y-3">
+      <div class="flex justify-between text-xl font-bold mb-4">
+        <span>Total:</span>
+        <span id="total-pedido" class="text-green-600">R$ 0,00</span>
+      </div>
+      <button
+        onclick="finalizarPedido('NORMAL')"
+        class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 active:scale-95 transition-transform"
+      >
+        PEDIDO NORMAL
+      </button>
+      <button
+        onclick="finalizarPedido('PREFERENCIAL')"
+        class="w-full bg-red-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-red-700 active:scale-95 transition-transform"
+      >
+        PREFERENCIAL
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let carrinho = {}; // Estrutura: { id: { nome, preco, qtd } }
+
+  // 1. Buscar pratos do Banco de Dados
+  async function carregarMenu() {
+    try {
+      const res = await fetch("/api/v1/pratos/");
+      const pratos = await res.json();
+      const grid = document.getElementById("grid-produtos");
+
+      if (pratos.length === 0) {
+        grid.innerHTML =
+          '<p class="col-span-full text-gray-500">Nenhum prato cadastrado.</p>';
+        return;
+      }
+
+      grid.innerHTML = pratos
+        .map(
+          (p) => `
+                <button onclick="adicionarAoCarrinho('${p.id}', '${p.nome}', ${p.preco})" 
+                        class="bg-white p-4 rounded-xl shadow-sm border-2 border-transparent hover:border-blue-500 hover:shadow-md transition-all text-left group">
+                    <p class="font-bold text-gray-800 group-hover:text-blue-600">${p.nome}</p>
+                    <p class="text-blue-600 font-bold">R$ ${parseFloat(p.preco).toFixed(2)}</p>
+                </button>
+            `,
+        )
+        .join("");
+    } catch (e) {
+      console.error("Erro ao carregar menu:", e);
+    }
+  }
+
+  // 2. Adicionar item ao objeto carrinho
+  function adicionarAoCarrinho(id, nome, preco) {
+    if (carrinho[id]) {
+      carrinho[id].qtd += 1;
+    } else {
+      carrinho[id] = { nome, preco: parseFloat(preco), qtd: 1 };
+    }
+    renderizarCarrinho();
+  }
+
+  // 3. Alterar quantidade (+ ou -)
+  function alterarQtd(id, delta) {
+    carrinho[id].qtd += delta;
+    if (carrinho[id].qtd <= 0) delete carrinho[id];
+    renderizarCarrinho();
+  }
+
+  // 4. Atualizar a interface do carrinho e o total
+  function renderizarCarrinho() {
+    const lista = document.getElementById("lista-carrinho");
+    const totalElemento = document.getElementById("total-pedido");
+    const itensIds = Object.keys(carrinho);
+
+    if (itensIds.length === 0) {
+      lista.innerHTML =
+        '<p id="carrinho-vazio" class="text-gray-400 text-center mt-10">Carrinho vazio</p>';
+      totalElemento.innerText = "R$ 0,00";
+      return;
+    }
+
+    let totalGeral = 0;
+    lista.innerHTML = itensIds
+      .map((id) => {
+        const item = carrinho[id];
+        totalGeral += item.preco * item.qtd;
+        return `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+                    <div class="flex-1">
+                        <p class="font-bold text-sm text-gray-800">${item.nome}</p>
+                        <p class="text-xs text-gray-500">R$ ${item.preco.toFixed(2)} un.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="alterarQtd('${id}', -1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">-</button>
+                        <span class="font-bold w-4 text-center">${item.qtd}</span>
+                        <button onclick="alterarQtd('${id}', 1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">+</button>
+                    </div>
+                </div>
+            `;
+      })
+      .join("");
+
+    totalElemento.innerText = `R$ ${totalGeral.toFixed(2)}`;
+  }
+
+  // 5. Enviar para o Backend (Service Layer)
+  async function finalizarPedido(tipo) {
+    const itens = Object.keys(carrinho).map((id) => ({
+      prato_id: id,
+      quantidade: carrinho[id].qtd,
+    }));
+
+    if (itens.length === 0) return alert("Adicione itens ao carrinho!");
+
+    const res = await fetch("/api/v1/pedidos/criar/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo, itens }),
+    });
+
+    if (res.ok) {
+      alert("Pedido enviado para produção!");
+      carrinho = {};
+      renderizarCarrinho();
+    } else {
+      const err = await res.json();
+      alert("Erro: " + (err.error || "Falha na comunicação"));
+    }
+  }
+
+  // Iniciar
+  window.onload = carregarMenu;
+</script>
+{% endblock %}

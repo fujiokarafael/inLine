@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}InLine{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-900 min-h-screen">
+    <nav class="bg-blue-600 p-4 text-white font-bold shadow-md">
+      INLINE - SISTEMA DE FILAS
+    </nav>
+
+    <main>{% block content %} {% endblock %}</main>
+
+    {% block extra_js %} {% endblock %}
+  </body>
+</html>

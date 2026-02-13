@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+from django.db.models import Q, F
+
 
 
 # =========================
@@ -16,30 +18,28 @@ class Pedido(models.Model):
         PENDENTE = "PENDENTE"
         PRODUCAO = "PRODUCAO"
         FINALIZADO = "FINALIZADO"
+        RETIRADO = "RETIRADO"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tipo = models.CharField(max_length=20, choices=Tipo.choices)
-    status = models.CharField(max_length=20, choices=Status.choices)
-
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, db_index=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE, db_index=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["status", "tipo", "created_at"]),
         ]
 
-
 # =========================
 # PRATO (CATÁLOGO)
 # =========================
 
-class Prato(models.Model):
+class Prato(models.Model):  
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nome = models.CharField(max_length=100)
     preco = models.DecimalField(max_digits=10, decimal_places=2)
-    ativo = models.BooleanField(default=True)
+    ativo = models.BooleanField(default=True, db_index=True)
     tempo_preparo_seg = models.IntegerField()
 
     class Meta:
@@ -57,32 +57,33 @@ class FilaPrato(models.Model):
     class Status(models.TextChoices):
         PENDENTE = "PENDENTE"
         EM_PRODUCAO = "EM_PRODUCAO"
+        FINALIZADO = "FINALIZADO"
         RETIRADO = "RETIRADO"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="filas")
     prato = models.ForeignKey(Prato, on_delete=models.PROTECT, null=True)
-
     preco_unitario = models.DecimalField(max_digits=8, decimal_places=2)
-
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDENTE,
-    )
-
-    started_at = models.DateTimeField(null=True, blank=True)
-    finished_at = models.DateTimeField(null=True, blank=True)
-    usado_em_metrica = models.BooleanField(default=False)
-
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
+    started_at = models.DateTimeField(null=True, blank=True, db_index=True )
+    finished_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    usado_em_metrica = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [
+            # Garante consistência temporal
+            models.CheckConstraint(
+                condition=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
+                name='check_finished_after_started'
+            )
+        ]
         indexes = [
             models.Index(fields=["prato", "status", "created_at"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["status", "created_at"], name="idx_fila_prioridade"),
             models.Index(fields=["created_at"]),
+            models.Index(fields=["usado_em_metrica", "status", "finished_at"]),
         ]
 
 
@@ -91,13 +92,14 @@ class FilaPrato(models.Model):
 # =========================
 
 class TMA(models.Model):
-    inicio = models.DateTimeField()
-    fim = models.DateTimeField()
-    tempo_medio_seg = models.FloatField()  # segundos
-    created_at = models.DateTimeField(auto_now_add=True)
+    # Janela móvel de 10 pratos
+    valor_tma_seg = models.FloatField()
+    calculado_em = models.DateTimeField(auto_now_add=True)
+    
+    # Auditabilidade: guarda o ID do último prato deste lote
+    ultimo_prato_id = models.UUIDField(null=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=["created_at"]),
-        ]
+        verbose_name = "Métrica TMA"
+        ordering = ['-calculado_em']
 

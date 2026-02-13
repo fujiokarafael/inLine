@@ -1,29 +1,25 @@
 from django.urls import path
-from django.urls import path
+from django.views.generic import TemplateView
 from .views import (
-    CreatePratoAPIView,
-    CreateOrderAPIView,
-    NextOrderAPIView,
-    PainelCozinhaPratoView,
-    FinalizarPratoView,
-    PratoNextAPIView,
-    IniciarPratoView,
+    ListPratosAPIView, CreateOrderAPIView, 
+    NextOrderAPIView, PainelCozinhaPratoView, 
+    FinalizarPratoView,CreatePratoAPIView,PratoNextAPIView,
 )
 
 urlpatterns = [
-     # pratos
-    path("pratos/", CreatePratoAPIView.as_view()),
-    path("pratos/<uuid:prato_id>/next/", PratoNextAPIView.as_view()),
+    # TELAS (HTML) - Acesse exatamente com a barra no final
+    path('caixa/', TemplateView.as_view(template_name="caixa.html"), name='gui-caixa'),
+    path('atendimento/', TemplateView.as_view(template_name="atendimento.html"), name='gui-atendimento'),
+    path('producao/', TemplateView.as_view(template_name="producao.html"), name='gui-producao'),
+    path('cadastrar-prato/', TemplateView.as_view(template_name="cadastrar_prato.html"), name='gui-cadastrar'),
+
+    # API - O JavaScript deve usar esse prefixo
+    path('api/v1/pratos/', ListPratosAPIView.as_view()),
+    path('api/v1/pratos/criar/', CreatePratoAPIView.as_view(), name='api_criar_prato'),
+    path('api/v1/pedidos/criar/', CreateOrderAPIView.as_view()),
+    path('api/v1/fila/proximo/', NextOrderAPIView.as_view(), name='proximo_pedido'),
+    path('api/v1/fila/painel/', PainelCozinhaPratoView.as_view(), name='painel-cozinha'),
+    path('api/v1/fila/finalizar/<uuid:fila_prato_id>/', FinalizarPratoView.as_view(), name='finalizar-prato'),
+    path('api/v1/fila/proximo-prato/<uuid:prato_id>/', PratoNextAPIView.as_view(), name='proximo-por-prato'),
     
-
-
-    # pedidos
-    path("orders/", CreateOrderAPIView.as_view()),
-    path("orders/next/", NextOrderAPIView.as_view()),
-
-    # cozinha
-    path("painel/prato/<uuid:prato_id>/", PainelCozinhaPratoView.as_view()),
-    path("cozinha/finalizar/<uuid:fila_prato_id>/", FinalizarPratoView.as_view()),
-    path("cozinha/iniciar/<uuid:fila_prato_id>/", IniciarPratoView.as_view()),
-
 ]

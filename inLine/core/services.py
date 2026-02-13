@@ -1,10 +1,7 @@
 from decimal import Decimal
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
-from django.db.models import Sum
 from uuid import UUID
-
-
 from .models import Pedido, FilaPrato, TMA, Prato
 
 
@@ -13,71 +10,57 @@ from .models import Pedido, FilaPrato, TMA, Prato
 # =========================
 
 def create_order(tipo, itens):
-    """
-    Cria um pedido com os itens fornecidos.
-
-    itens = [
-      {"prato_id": "<UUID string>", "quantidade": 3},
-      {"prato_id": "<UUID string>", "quantidade": 1},
-    ]
-    """
     if not itens:
         raise ValueError("É necessário informar ao menos um item")
 
     with transaction.atomic():
-        total = Decimal("0.00")
-
-        # Criar pedido vazio inicialmente
+        # 1. Criar pedido inicial
         pedido = Pedido.objects.create(
             tipo=tipo,
-            status=Pedido.Status.PENDENTE,
             total=Decimal("0.00"),
         )
 
-        # Converter IDs para UUIDs e buscar pratos ativos
+        # 2. Preparar dados e buscar pratos de uma vez só (Otimização)
         try:
-            prato_ids = [UUID(i["prato_id"]) for i in itens]
-        except ValueError as e:
-            raise ValueError(f"UUID inválido em itens: {e}")
+            prato_ids = [UUID(str(i["prato_id"])) for i in itens]
+        except (ValueError, KeyError):
+            raise ValueError("Formato de ID de prato inválido")
 
-        pratos = {p.id: p for p in Prato.objects.filter(id__in=prato_ids, ativo=True)}
+        # Busca todos os pratos necessários em uma única query
+        pratos_db = {p.id: p for p in Prato.objects.filter(id__in=prato_ids)}
+        
+        filas_para_criar = []
+        total_acumulado = Decimal("0.00")
 
-        filas = []
-
+        # 3. Processar itens
         for item in itens:
-            try:
-                prato_id = UUID(item["prato_id"])
-            except ValueError:
-                raise ValueError(f"UUID inválido: {item['prato_id']}")
-
-            prato = pratos.get(prato_id)
+            p_id = UUID(str(item["prato_id"]))
+            prato = pratos_db.get(p_id)
+            
             if not prato:
-                raise ValueError(f"Prato {prato_id} não encontrado ou inativo")
+                raise ValueError(f"Prato {p_id} não encontrado")
 
-            quantidade = int(item.get("quantidade", 0))
-            if quantidade <= 0:
-                raise ValueError(f"Quantidade inválida para o prato {prato_id}")
+            quantidade = int(item.get("quantidade", 1))
+            preco_no_momento = prato.preco # Assume que seu model Prato tem o campo 'preco'
 
-            preco = prato.preco
-
-            # Criar filas para cada unidade
+            # Criar objetos FilaPrato na memória
             for _ in range(quantidade):
-                filas.append(
+                filas_para_criar.append(
                     FilaPrato(
                         pedido=pedido,
                         prato=prato,
-                        preco_unitario=preco,
+                        preco_unitario=preco_no_momento,
                         status=FilaPrato.Status.PENDENTE
                     )
                 )
+            
+            total_acumulado += (preco_no_momento * quantidade)
 
-            total += preco * quantidade
+        # 4. Persistir no banco em massa
+        FilaPrato.objects.bulk_create(filas_para_criar)
 
-        # Criar todas as filas de uma vez
-        FilaPrato.objects.bulk_create(filas)
-
-        # Atualizar total do pedido
-        pedido.total = total
+        # 5. Atualizar o total do pedido
+        pedido.total = total_acumulado
         pedido.save(update_fields=["total"])
 
         return pedido
@@ -88,37 +71,45 @@ def create_order(tipo, itens):
 # =========================
 
 def get_next_in_queue(prato_id):
+    """
+    Algoritmo determinístico de captura.
+    Prioriza PREFERENCIAL sobre NORMAL via SQL puro para atomicidade.
+    """
     with transaction.atomic():
-
-        for tipo in (Pedido.Tipo.PREFERENCIAL, Pedido.Tipo.NORMAL):
-
-            candidato = (
-                FilaPrato.objects
-                .select_related("pedido")
-                .filter(
-                    prato_id=prato_id,
-                    status=FilaPrato.Status.PENDENTE,
-                    pedido__tipo=tipo,
-                )
-                .order_by("created_at")
-                .first()
+        # 1. Busca candidata respeitando a ordem de prioridade absoluta
+        # Usamos uma subquery ou ordenação composta para ser atômico
+        candidato = (
+            FilaPrato.objects.filter(
+                prato_id=prato_id,
+                status=FilaPrato.Status.PENDENTE
             )
-
-            if not candidato:
-                continue
-
-            venceu = (
-                FilaPrato.objects
-                .filter(id=candidato.id, status=FilaPrato.Status.PENDENTE)
-                .update(
-                    status=FilaPrato.Status.EM_PRODUCAO,
-                    started_at=timezone.now(),
-                )
+            .order_by(
+                models.Case(
+                    models.When(pedido__tipo=Pedido.Tipo.PREFERENCIAL, then=models.Value(0)),
+                    default=models.Value(1)
+                ),
+                "created_at"
             )
+            .select_for_update(skip_locked=False) # SQLite não suporta SKIP LOCKED, usamos soft-lock
+            .first()
+        )
 
-            if venceu:
-                return FilaPrato.objects.select_related("pedido", "prato").get(id=candidato.id)
+        if not candidato:
+            return None
 
+        # 2. Soft-lock determinístico: Só atualiza se ainda estiver PENDENTE
+        agora = timezone.now()
+        atualizados = FilaPrato.objects.filter(
+            id=candidato.id, 
+            status=FilaPrato.Status.PENDENTE
+        ).update(
+            status=FilaPrato.Status.EM_PRODUCAO, # Alinhado com o status do Model anterior
+            started_at=agora
+        )
+
+        if atualizados > 0:
+            return FilaPrato.objects.select_related("pedido", "prato").get(id=candidato.id)
+        
         return None
 
 
@@ -126,26 +117,26 @@ def get_next_in_queue(prato_id):
 # FINALIZAÇÃO DE PRATO
 # =========================
 
-def finalizar_prato_by_id(fila_prato_id):
+def finalize_prato(fila_prato_id):
+    """
+    Finaliza e dispara métricas atomicamente.
+    """
     with transaction.atomic():
-
-        atualizado = (
-            FilaPrato.objects
-            .filter(id=fila_prato_id, status=FilaPrato.Status.EM_PRODUCAO)
-            .update(
-                status=FilaPrato.Status.RETIRADO,
-                finished_at=timezone.now(),
-            )
+        rows = FilaPrato.objects.filter(
+            id=fila_prato_id, 
+            status=FilaPrato.Status.EM_PRODUCAO
+        ).update(
+            status=FilaPrato.Status.RETIRADO,
+            finished_at=timezone.now()
         )
 
-        if not atualizado:
+        if rows == 0:
             return None
 
-        prato = FilaPrato.objects.select_related("pedido", "prato").get(id=fila_prato_id)
-
-        calculate_tma()
-
-        return prato
+        # Trigger automático de métrica após finalização
+        media_atualizada = calculate_tma()
+        
+        return FilaPrato.objects.get(id=fila_prato_id)
 
 
 # =========================
@@ -153,38 +144,47 @@ def finalizar_prato_by_id(fila_prato_id):
 # =========================
 
 def calculate_tma():
+    """
+    Métricas baseadas em janela móvel fixa de 10 unidades.
+    Totalmente compatível com o Model TMA (valor_tma_seg, ultimo_prato_id).
+    """
     with transaction.atomic():
-
-        pratos = (
-            FilaPrato.objects
-            .select_for_update()
-            .filter(
+        # 1. Busca exatamente 10 e trava para escrita (select_for_update)
+        # Nota: Usamos FilaPrato.Status.RETIRADO conforme o desafio técnico
+        pratos = list(
+            FilaPrato.objects.filter(
                 status=FilaPrato.Status.RETIRADO,
-                usado_em_metrica=False,
+                usado_em_metrica=False
             )
+            .select_for_update()
             .order_by("finished_at")[:10]
         )
 
+        # 2. Validação da janela de 10 unidades
         if len(pratos) < 10:
             return None
 
-        inicio = pratos[0].started_at
-        fim = pratos[-1].finished_at
-        media = (fim - inicio).total_seconds() / 10
+        t_inicial = pratos[0].started_at
+        t_final = pratos[-1].finished_at
+        
+        # 3. Cálculo com segurança contra drift de relógio
+        diff_segundos = max(0.0, (t_final - t_inicial).total_seconds())
+        media = diff_segundos / 10
 
+        # 4. Persistência (Nomes de campos alinhados ao seu MODEL)
         TMA.objects.create(
-            tempo_medio=media,
-            inicio=inicio,
-            fim=fim,
+            valor_tma_seg=media,        # Compatível com seu Model
+            ultimo_prato_id=pratos[-1].id # Auditabilidade conforme seu Model
+            # calculado_em é auto_now_add, não precisa passar aqui
         )
 
+        # 5. Atualização atômica para evitar reuso do prato em outro cálculo
         FilaPrato.objects.filter(
             id__in=[p.id for p in pratos]
         ).update(usado_em_metrica=True)
 
         return media
-
-
+    
 # =========================
 # PAINEL POR PRATO
 # =========================
