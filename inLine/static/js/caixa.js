@@ -44,3 +44,40 @@ async function finalizarPedido(tipo) {
     alert("LICENÇA EXPIRADA. Procure o administrador.");
   }
 }
+
+async function atualizarIndicadoresTMA() {
+  const container = document.getElementById("tma-container");
+  if (!container) return;
+
+  try {
+    const res = await fetch("/api/v1/metrica/tma-dashboard/");
+    const dados = await res.json();
+
+    container.innerHTML = dados
+      .map((item) => {
+        const corStatus =
+          item.status === "alerta"
+            ? "text-red-500 border-red-500/20"
+            : "text-green-500 border-green-500/20";
+
+        return `
+                <div class="bg-gray-800 border ${corStatus} p-3 rounded-xl min-w-[140px] shadow-lg">
+                    <span class="text-[9px] block text-gray-400 font-black uppercase tracking-widest">${item.prato_nome}</span>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-xl font-black text-white">${item.tma_minutos}</span>
+                        <span class="text-[10px] font-bold text-gray-500 uppercase">min</span>
+                    </div>
+                </div>
+            `;
+      })
+      .join("");
+  } catch (e) {
+    console.error("Erro ao carregar TMA:", e);
+  }
+}
+
+// Inicia a atualização
+document.addEventListener("DOMContentLoaded", () => {
+  atualizarIndicadoresTMA();
+  setInterval(atualizarIndicadoresTMA, 30000); // Atualiza a cada 30 segundos
+});

@@ -1,24 +1,54 @@
 {% extends "base.html" %} {% load static %} {% block content %}
-<div class="bg-gray-900 min-h-screen flex flex-col p-4">
+<div class="bg-gray-900 min-h-screen flex flex-col p-4 overflow-hidden">
   <header class="flex justify-between items-center mb-6 px-4">
-    <h1 class="text-white text-2xl font-bold">
-      ESTAÇÃO: <span class="text-blue-400">COZINHA CENTRAL</span>
-    </h1>
-    <div class="bg-gray-800 p-3 rounded-lg text-white">
-      <span class="text-xs block text-gray-400">FILA</span>
-      <span class="text-xl font-bold text-green-400" id="counter-pendente"
-        >0</span
-      >
+    <div>
+      <h1 class="text-white text-2xl font-black uppercase tracking-widest">
+        Painel de Produção
+      </h1>
+      <p class="text-blue-500 text-[10px] font-black uppercase">
+        Fila por Estação de Prato
+      </p>
     </div>
   </header>
 
   <main
-    id="cards-container"
-    class="flex-1 flex gap-6 overflow-x-auto pb-4 items-start px-4"
+    id="painel-estacoes"
+    class="flex-1 flex gap-6 overflow-x-auto pb-8 items-start px-4 custom-scrollbar"
   >
-    <p class="text-gray-500">Conectando ao servidor...</p>
+    <div
+      class="w-full text-center py-20 text-gray-600 animate-pulse font-bold uppercase tracking-widest text-sm"
+    >
+      Sincronizando pratos...
+    </div>
   </main>
 </div>
+
+<style>
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #111827;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 10px;
+  }
+  /* Animação para novos itens que entram na fila */
+  .animate-card {
+    animation: slideUp 0.3s ease-out forwards;
+  }
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
 {% endblock %} {% block extra_js %}
 <script src="{% static 'js/producao.js' %}"></script>
 {% endblock %}

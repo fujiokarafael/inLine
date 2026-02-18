@@ -67,150 +67,102 @@ def create_order(tipo, itens):
 
 
 # =========================
-# FILA POR PRATO (COZINHA)
-# =========================
-
-def get_next_in_queue(prato_id):
-    """
-    Algoritmo determinístico de captura.
-    Prioriza PREFERENCIAL sobre NORMAL via SQL puro para atomicidade.
-    """
-    with transaction.atomic():
-        # 1. Busca candidata respeitando a ordem de prioridade absoluta
-        # Usamos uma subquery ou ordenação composta para ser atômico
-        candidato = (
-            FilaPrato.objects.filter(
-                prato_id=prato_id,
-                status=FilaPrato.Status.PENDENTE
-            )
-            .order_by(
-                models.Case(
-                    models.When(pedido__tipo=Pedido.Tipo.PREFERENCIAL, then=models.Value(0)),
-                    default=models.Value(1)
-                ),
-                "created_at"
-            )
-            .select_for_update(skip_locked=False) # SQLite não suporta SKIP LOCKED, usamos soft-lock
-            .first()
-        )
-
-        if not candidato:
-            return None
-
-        # 2. Soft-lock determinístico: Só atualiza se ainda estiver PENDENTE
-        agora = timezone.now()
-        atualizados = FilaPrato.objects.filter(
-            id=candidato.id, 
-            status=FilaPrato.Status.PENDENTE
-        ).update(
-            status=FilaPrato.Status.EM_PRODUCAO, # Alinhado com o status do Model anterior
-            started_at=agora
-        )
-
-        if atualizados > 0:
-            return FilaPrato.objects.select_related("pedido", "prato").get(id=candidato.id)
-        
-        return None
-
-
-# =========================
 # FINALIZAÇÃO DE PRATO
 # =========================
 
-def finalize_prato(fila_prato_id):
+def finalize_prato(fila_id):
     """
-    Finaliza e dispara métricas atomicamente.
+    Finaliza um item da fila de forma atômica.
+    Retorna o objeto se finalizado com sucesso, ou None se falhar.
     """
-    with transaction.atomic():
-        rows = FilaPrato.objects.filter(
-            id=fila_prato_id, 
-            status=FilaPrato.Status.EM_PRODUCAO
-        ).update(
-            status=FilaPrato.Status.RETIRADO,
-            finished_at=timezone.now()
-        )
+    try:
+        with transaction.atomic():
+            # Busca o item com select_for_update para evitar que dois 
+            # cliques finalizem o mesmo registro simultaneamente
+            item = FilaPrato.objects.select_for_update().filter(
+                id=fila_id, 
+                status=FilaPrato.Status.PENDENTE
+            ).first()
 
-        if rows == 0:
-            return None
+            if not item:
+                return None
 
-        # Trigger automático de métrica após finalização
-        media_atualizada = calculate_tma()
-        
-        return FilaPrato.objects.get(id=fila_prato_id)
+            # Atualiza o status
+            item.status = FilaPrato.Status.FINALIZADO
+            item.save(update_fields=['status'])
+            
+            return item
+    except Exception as e:
+        print(f"Erro crítico em finalize_prato: {e}")
+        return None
 
 
 # =========================
 # MÉTRICA TMA (janela fixa)
 # =========================
 
-def calculate_tma():
+def calculate_tma_per_prato():
     """
-    Métricas baseadas em janela móvel fixa de 10 unidades.
-    Totalmente compatível com o Model TMA (valor_tma_seg, ultimo_prato_id).
+    Calcula o TMA segmentado por prato (Janela de 10 unidades).
+    Processa apenas itens com status RETIRADO que ainda não foram contabilizados.
     """
-    with transaction.atomic():
-        # 1. Busca exatamente 10 e trava para escrita (select_for_update)
-        # Nota: Usamos FilaPrato.Status.RETIRADO conforme o desafio técnico
-        pratos = list(
-            FilaPrato.objects.filter(
-                status=FilaPrato.Status.RETIRADO,
-                usado_em_metrica=False
-            )
-            .select_for_update()
-            .order_by("finished_at")[:10]
-        )
+    # 1. Identifica quais pratos têm pelo menos 10 itens aguardando cálculo
+    # Usamos um subquery ou agregação simples para performance
+    pratos_ids = FilaPrato.objects.filter(
+        status=FilaPrato.Status.RETIRADO,
+        usado_em_metrica=False
+    ).values('prato').annotate(
+        total=models.Count('id')
+    ).filter(total__gte=10).values_list('prato', flat=True)
 
-        # 2. Validação da janela de 10 unidades
-        if len(pratos) < 10:
-            return None
+    resultados = []
 
-        t_inicial = pratos[0].started_at
-        t_final = pratos[-1].finished_at
-        
-        # 3. Cálculo com segurança contra drift de relógio
-        diff_segundos = max(0.0, (t_final - t_inicial).total_seconds())
-        media = diff_segundos / 10
+    for prato_id in pratos_ids:
+        try:
+            with transaction.atomic():
+                # 2. Busca exatamente 10 e trava para escrita (select_for_update)
+                # O SQLite (modo WAL) lidará com o lock por linha
+                itens = list(
+                    FilaPrato.objects.filter(
+                        prato_id=prato_id,
+                        status=FilaPrato.Status.RETIRADO,
+                        usado_em_metrica=False
+                    )
+                    .select_for_update()
+                    .order_by("finished_at")[:10]
+                )
 
-        # 4. Persistência (Nomes de campos alinhados ao seu MODEL)
-        TMA.objects.create(
-            valor_tma_seg=media,        # Compatível com seu Model
-            ultimo_prato_id=pratos[-1].id # Auditabilidade conforme seu Model
-            # calculado_em é auto_now_add, não precisa passar aqui
-        )
+                # Validação de segurança (caso outro processo tenha pego)
+                if len(itens) < 10:
+                    continue
 
-        # 5. Atualização atômica para evitar reuso do prato em outro cálculo
-        FilaPrato.objects.filter(
-            id__in=[p.id for p in pratos]
-        ).update(usado_em_metrica=True)
+                # 3. Cálculo: Tempo entre o 10º finalizado e o 1º iniciado do lote
+                t_inicial = itens[0].started_at
+                t_final = itens[-1].finished_at
+                
+                if t_inicial and t_final:
+                    diff_segundos = max(0.0, (t_final - t_inicial).total_seconds())
+                    media = diff_segundos / 10
 
-        return media
-    
-# =========================
-# PAINEL POR PRATO
-# =========================
+                    # 4. Persistência vinculada ao Prato específico
+                    TMA.objects.create(
+                        prato_id=prato_id,
+                        valor_tma_seg=media,
+                        ultimo_prato_id=itens[-1].id
+                    )
 
-def get_painel_prato(prato_id, limite=50):
-    em_producao = (
-        FilaPrato.objects
-        .select_related("pedido")
-        .filter(
-            prato_id=prato_id,
-            status=FilaPrato.Status.EM_PRODUCAO,
-        )
-        .order_by("started_at")[:limite]
-    )
+                    # 5. Marca os 10 itens como "usados" para não repetir no próximo cálculo
+                    FilaPrato.objects.filter(
+                        id__in=[i.id for i in itens]
+                    ).update(usado_em_metrica=True)
 
-    pendentes = (
-        FilaPrato.objects
-        .select_related("pedido")
-        .filter(
-            prato_id=prato_id,
-            status=FilaPrato.Status.PENDENTE,
-        )
-        .order_by("created_at")[:limite]
-    )
+                    resultados.append({
+                        "prato_id": prato_id, 
+                        "media_seg": media
+                    })
 
-    return {
-        "em_producao": list(em_producao),
-        "pendentes": list(pendentes),
-    }
+        except Exception as e:
+            print(f"Erro ao calcular TMA para prato {prato_id}: {e}")
+            continue
+
+    return resultados

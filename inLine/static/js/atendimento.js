@@ -15,37 +15,42 @@ async function carregarListaPendentes() {
 
   try {
     const res = await fetch("/api/v1/fila/proximo/");
-    // Se a lista vier vazia (204), limpamos a tela
-    if (res.status === 204) {
+
+    // Se for 204 ou não estiver OK, limpamos a lista e saímos
+    if (res.status === 204 || !res.ok) {
       listaDoc.innerHTML =
         '<p class="text-slate-500 italic text-sm">Nenhum pedido na fila.</p>';
       return;
     }
 
+    // Só tentamos ler o JSON se houver conteúdo
     const pendentes = await res.json();
     listaDoc.innerHTML = "";
 
-    if (pendentes.length === 0) {
+    if (!pendentes || pendentes.length === 0) {
       listaDoc.innerHTML =
         '<p class="text-slate-500 italic text-sm">Nenhum pedido na fila.</p>';
       return;
     }
 
     pendentes.forEach((p) => {
-      const senha = String(p.pedido_id).slice(0, 4).toUpperCase();
+      // Extrai a senha dos 4 primeiros caracteres do UUID
+      const senha = String(p.pedido_id).toUpperCase().slice(0, 4);
       const corBorda =
         p.tipo === "PREFERENCIAL" ? "border-red-500" : "border-amber-500";
 
       listaDoc.innerHTML += `
-                <div class="bg-slate-800 p-4 rounded-xl border-l-4 ${corBorda} mb-3 shadow-lg">
-                    <div class="text-white font-black text-lg">#${senha} - ${p.prato}</div>
-                    <div class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">${p.tipo}</div>
-                </div>`;
+        <div class="bg-slate-800 p-4 rounded-xl border-l-4 ${corBorda} mb-3 shadow-lg flex justify-between items-center">
+            <div>
+                <div class="text-white font-black text-2xl">#${senha}</div>
+                <div class="text-[10px] font-bold uppercase tracking-widest text-slate-400">${p.tipo}</div>
+            </div>
+            <div class="text-slate-500 text-xs font-mono">${p.criado_em}</div>
+        </div>`;
     });
   } catch (e) {
+    // Aqui capturamos o erro de SyntaxError: Unexpected end of JSON input
     console.error("Erro ao listar pendentes:", e);
-    listaDoc.innerHTML =
-      '<p class="text-red-500 text-sm">Erro ao conectar com o servidor.</p>';
   }
 }
 
@@ -70,7 +75,6 @@ async function chamarProximo() {
       // Atualiza o Painel Grande
       const senha = String(p.pedido_id).slice(0, 4).toUpperCase();
       document.getElementById("senha-display").innerText = senha;
-      document.getElementById("info-adicional").innerText = p.prato;
 
       // Som de alerta (opcional/feedback visual)
       console.log("Chamando senha: " + senha);

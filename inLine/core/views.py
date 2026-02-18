@@ -1,11 +1,11 @@
+
+from django.db import transaction, models
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from .services import (
     create_order,
-    get_next_in_queue,
-    get_painel_prato,
     finalize_prato,
 )
 from .models import Pedido, FilaPrato, Prato
@@ -56,164 +56,123 @@ class CreateOrderAPIView(APIView):
 
 class NextOrderAPIView(APIView):
     def get(self, request):
-        """ Retorna a lista de pedidos aguardando chamada """
+        """Lista pedidos pendentes respeitando a prioridade de festival"""
         try:
-            pedidos_pendentes = Pedido.objects.filter(
+            # Ordenação prioritária: Preferencial primeiro, depois os mais antigos
+            pedidos = Pedido.objects.filter(
                 status=Pedido.Status.PENDENTE
-            ).order_by('-tipo', 'created_at')
+            ).order_by(
+                models.Case(
+                    models.When(tipo=Pedido.Tipo.PREFERENCIAL, then=models.Value(0)),
+                    default=models.Value(1)
+                ),
+                "created_at"
+            )[:10]
 
             data = []
-            for pedido in pedidos_pendentes:
-                # Buscamos manualmente o primeiro item da fila para este pedido
-                item = FilaPrato.objects.filter(pedido=pedido).first()
-                
+            for p in pedidos:
                 data.append({
-                    "id": str(pedido.id),
-                    "pedido_id": str(pedido.id),
-                    "tipo": pedido.tipo,
-                    "prato": item.prato.nome if item and item.prato else "Diversos",
-                    "criado_em": pedido.created_at.strftime("%H:%M")
+                    "pedido_id": str(p.id), # O JS espera 'pedido_id'
+                    "tipo": p.tipo,
+                    "criado_em": p.created_at.strftime("%H:%M")
                 })
             
+            if not data:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+                
             return Response(data, status=status.HTTP_200_OK)
         except Exception as e:
-            print(f"Erro no Atendimento (GET): {e}")
-            return Response({"error": "Falha ao listar pedidos"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=500)
 
+    @transaction.atomic
     def post(self, request):
-        """ Processa a chamada do próximo pedido """
-        try:
-            # Seleciona o primeiro da fila (Preferencial > Antiguidade)
-            pedido = Pedido.objects.filter(
-                status=Pedido.Status.PENDENTE,
-            ).order_by('-tipo', 'created_at').first()
+        """Algoritmo de captura de SENHA (Painel Central)"""
+        # Seleciona com Lock (select_for_update) para evitar chamadas duplas
+        pedido = Pedido.objects.filter(
+            status=Pedido.Status.PENDENTE
+        ).order_by(
+            models.Case(
+                models.When(tipo=Pedido.Tipo.PREFERENCIAL, then=models.Value(0)),
+                default=models.Value(1)
+            ),
+            "created_at"
+        ).select_for_update().first()
 
-            if not pedido:
-                return Response(status=status.HTTP_204_NO_CONTENT)
+        if not pedido:
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
-            # Busca o prato para exibir na senha
-            item = FilaPrato.objects.filter(pedido=pedido).first()
-            nome_prato = item.prato.nome if item and item.prato else "Diversos"
+        pedido.status = Pedido.Status.PRODUCAO
+        pedido.save(update_fields=['status'])
 
-            # Atualiza o status para PRODUCAO (sai da fila de pendentes)
-            pedido.status = Pedido.Status.PRODUCAO 
-            pedido.save(update_fields=['status'])
-
-            return Response({
-                "pedido_id": str(pedido.id),
-                "prato": nome_prato,
-                "tipo": pedido.tipo
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            print(f"Erro no Atendimento (POST): {e}")
-            return Response({"error": "Erro ao processar chamada"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "pedido_id": str(pedido.id),
+            "senha": str(pedido.id).upper()[:4],
+            "tipo": pedido.tipo
+        }, status=status.HTTP_200_OK)
+    
 # =========================
 # PAINEL DA COZINHA POR PRATO
 # =========================
 
+# core/views.py
 class PainelCozinhaPratoView(APIView):
     def get(self, request, prato_id=None):
         try:
-            # Busca direta para garantir que os dados apareçam
-            # Filtramos por PENDENTE para aparecer na cozinha
+            # A MUDANÇA: Filtramos FilaPrato onde o PEDIDO está em PRODUCAO
+            # E o item em si ainda está PENDENTE na cozinha.
             queryset = FilaPrato.objects.filter(
-                status=FilaPrato.Status.PENDENTE
-            ).select_related('pedido', 'prato').order_by('pedido__created_at')
+                pedido__status=Pedido.Status.PRODUCAO, # Liberado pelo atendimento
+                status=FilaPrato.Status.PENDENTE       # Ainda não feito pela cozinha
+            ).select_related('pedido', 'prato').order_by(
+                models.Case(
+                    models.When(pedido__tipo='PREFERENCIAL', then=models.Value(0)),
+                    default=models.Value(1)
+                ),
+                'created_at'
+            )
 
             if prato_id:
                 queryset = queryset.filter(prato_id=prato_id)
 
             data = []
+            agora = timezone.now()
             for fp in queryset:
                 data.append({
                     "fila_id": str(fp.id),
                     "pedido_id": str(fp.pedido.id),
                     "prato_nome": fp.prato.nome,
                     "tipo": fp.pedido.tipo,
-                    "criado_em": fp.created_at.strftime("%H:%M"),
-                    "tempo_espera": int((timezone.now() - fp.created_at).total_seconds() / 60)
+                    "tempo_espera": int((agora - fp.created_at).total_seconds() / 60)
                 })
             
-            return Response({"pendentes": data}, status=status.HTTP_200_OK)
+            return Response({"pendentes": data}, status=200)
         except Exception as e:
-            print(f"Erro na Produção: {e}")
             return Response({"pendentes": [], "error": str(e)}, status=500)
 # =========================
 # FINALIZAR ITEM DE PRODUÇÃO
 # =========================
 
 class FinalizarPratoView(APIView):
-    def post(self, request, fila_prato_id):
-        fila = finalize_prato(fila_prato_id) 
-        if not fila:
-            return Response(status=status.HTTP_409_CONFLICT)
-
-        return Response({"status": "Finalizado", "fila_id": str(fila.id)})
-
-
-class PratoNextAPIView(APIView):
-
-    """
-    Retorna o próximo item pendente na fila para um prato específico.
-    """
-
-    def get(self, request, prato_id):
+    def post(self, request, id): # O nome aqui deve bater com o <uuid:fila_id> do urls.py
         try:
-            prato = Prato.objects.get(id=prato_id, ativo=True)
-        except Prato.DoesNotExist:
-            return Response(
-                {"error": "Prato não encontrado ou inativo"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            fila = finalize_prato(id) 
+            
+            if not fila:
+                # Se o item não for achado ou já estiver finalizado
+                return Response(
+                    {"detail": "Item não encontrado ou já processado."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-        # Buscar o próximo item pendente na fila
-        fila_pendente = (
-            FilaPrato.objects
-            .filter(prato=prato, status=FilaPrato.Status.PENDENTE)
-            .order_by("pedido__created_at")  # ou outro critério de prioridade
-            .first()
-        )
+            return Response({
+                "status": "Finalizado", 
+                "fila_id": str(id)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            # Retorna o erro real para o log do Django ajudar no debug
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if not fila_pendente:
-            return Response(
-                {"error": f"Nenhum item na fila do prato {prato.nome}"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # Retornar dados do item pendente
-        return Response({
-            "fila_id": str(fila_pendente.id),
-            "pedido_id": str(fila_pendente.pedido.id),
-            "prato": prato.nome,
-            "tipo_pedido": fila_pendente.pedido.tipo,
-            "status": fila_pendente.status,
-            "criado": fila_pendente.created_at.isoformat()
-        })
-class IniciarPratoView(APIView):
-
-    """
-    Marca um item da fila como EM_PRODUCAO
-    """
-
-    def post(self, request, fila_prato_id):
-        try:
-            fila = FilaPrato.objects.get(id=fila_prato_id)
-        except FilaPrato.DoesNotExist:
-            return Response({"error": "Item da fila não encontrado"}, status=404)
-
-        if fila.status != FilaPrato.Status.PENDENTE:
-            return Response({"error": f"Item não pode ser iniciado, status atual: {fila.status}"}, status=400)
-
-        fila.status = FilaPrato.Status.EM_PRODUCAO
-        fila.started_at = timezone.now()
-        fila.save(update_fields=["status", "started_at"])
-
-        return Response({
-            "fila_id": str(fila.id),
-            "status": fila.status,
-            "started_at": fila.started_at.isoformat()
-        })
     
 # AUXILIAR: Listagem de Pratos para o Terminal de Caixa
 class ListPratosAPIView(APIView):
@@ -223,3 +182,25 @@ class ListPratosAPIView(APIView):
             {"id": str(p.id), "nome": p.nome, "preco": float(p.preco)} 
             for p in pratos
         ])
+
+
+# tempo médio de cada prato
+class TMADashboardAPIView(APIView):
+    def get(self, request):
+        pratos = Prato.objects.filter(ativo=True)
+        data = []
+
+        for prato in pratos:
+            # Pega o TMA mais recente deste prato
+            ultima_metrica = TMA.objects.filter(prato=prato).order_by('-calculado_em').first()
+            
+            # Se não houver TMA (menos de 10 vendas), usa o tempo padrão do cadastro
+            tempo_valor = ultima_metrica.valor_tma_seg if ultima_metrica else prato.tempo_preparo_seg
+            
+            data.append({
+                "prato_nome": prato.nome,
+                "tma_minutos": round(tempo_valor / 60, 1),
+                "tem_metrica": ultima_metrica is not None
+            })
+
+        return Response(data, status=200)

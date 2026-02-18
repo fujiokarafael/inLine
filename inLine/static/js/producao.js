@@ -1,67 +1,8 @@
 // static/js/producao.js
 
-async function refreshPainel() {
-  try {
-    // 1. Busca os dados da API
-    const res = await fetch("/api/v1/fila/painel/");
-    if (!res.ok) return;
-
-    const data = await res.json();
-
-    // 2. Seleciona o container CORRETO (conforme seu HTML)
-    const container = document.getElementById("cards-container");
-    const counter = document.getElementById("counter-pendente");
-
-    if (!container) {
-      console.error("Erro: Elemento 'cards-container' não encontrado no HTML.");
-      return;
-    }
-
-    // Atualiza o contador de pedidos no topo
-    if (counter) counter.innerText = data.pendentes.length;
-
-    // 3. Limpa o container para reconstruir a lista
-    container.innerHTML = "";
-
-    if (data.pendentes.length === 0) {
-      container.innerHTML = `
-                <div class="text-gray-500 border-2 border-dashed border-gray-800 p-10 rounded-2xl w-full text-center">
-                    Aguardando novos pedidos...
-                </div>`;
-      return;
-    }
-
-    // 4. Mapeia os dados para os Cards
-    data.pendentes.forEach((item) => {
-      const isPref = item.tipo === "PREFERENCIAL";
-      const card = `
-                <div class="flex-none w-80 bg-white rounded-2xl shadow-2xl overflow-hidden border-t-8 ${isPref ? "border-red-500" : "border-blue-500"} transition-all">
-                    <div class="p-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <span class="bg-gray-100 text-gray-700 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">${item.tipo}</span>
-                            <span class="text-gray-400 text-xs font-mono">${item.tempo_espera} min</span>
-                        </div>
-                        
-                        <h2 class="text-2xl font-black text-gray-900 leading-tight mb-2 uppercase">${item.prato_nome}</h2>
-                        <p class="text-gray-400 text-xs font-bold mb-6 italic">PEDIDO: #${item.pedido_id.slice(0, 4).toUpperCase()}</p>
-                        
-                        <button onclick="iniciarPreparo('${item.fila_id}')" 
-                            class="w-full bg-gray-900 hover:bg-green-600 text-white py-4 rounded-xl font-bold transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2">
-                            <span>CONCLUIR</span>
-                        </button>
-                    </div>
-                </div>`;
-      container.insertAdjacentHTML("beforeend", card);
-    });
-  } catch (error) {
-    console.error("Erro ao atualizar o painel de produção:", error);
-  }
-}
-
-/**
- * Função para finalizar o prato
- */
-async function iniciarPreparo(filaId) {
+// 1. Função Global de Finalização (acessada pelo onclick)
+async function finalizarItem(filaId) {
+  console.log("Tentando finalizar item:", filaId);
   try {
     const res = await fetch(`/api/v1/fila/finalizar/${filaId}/`, {
       method: "POST",
@@ -72,14 +13,69 @@ async function iniciarPreparo(filaId) {
     });
 
     if (res.ok) {
-      refreshPainel(); // Atualiza a tela na hora
+      console.log("Item finalizado com sucesso");
+      atualizarPainel(); // Recarrega a tela
+    } else {
+      console.error("Erro na resposta do servidor ao finalizar");
     }
-  } catch (err) {
-    console.error("Erro ao finalizar:", err);
+  } catch (e) {
+    console.error("Falha na requisição de finalização:", e);
   }
 }
 
-// Função para o Token CSRF do Django
+// 2. Função de Atualização do Painel
+async function atualizarPainel() {
+  const container = document.getElementById("painel-estacoes");
+  if (!container) return;
+
+  try {
+    const res = await fetch("/api/v1/fila/painel/");
+    const data = await res.json();
+    const pendentes = data.pendentes || [];
+
+    // Agrupamento
+    const grupos = {};
+    pendentes.forEach((item) => {
+      if (!grupos[item.prato_nome]) grupos[item.prato_nome] = [];
+      grupos[item.prato_nome].push(item);
+    });
+
+    container.innerHTML = "";
+    Object.keys(grupos)
+      .sort()
+      .forEach((nomePrato) => {
+        const itens = grupos[nomePrato];
+        const colunaHTML = `
+                <div class="flex-none w-80 bg-gray-800/40 rounded-3xl flex flex-col border border-gray-700">
+                    <div class="p-4 border-b border-gray-700 bg-gray-800 rounded-t-3xl flex justify-between items-center">
+                        <h2 class="text-white font-black uppercase">${nomePrato}</h2>
+                        <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded">${itens.length}</span>
+                    </div>
+                    <div class="p-4 space-y-4 overflow-y-auto">
+                        ${itens
+                          .map(
+                            (item) => `
+                            <div class="bg-white rounded-2xl border-l-8 ${item.tipo === "PREFERENCIAL" ? "border-red-500" : "border-blue-500"} p-4 shadow-lg">
+                                <div class="text-[10px] font-black text-gray-400 mb-2 uppercase">${item.tipo}</div>
+                                <div class="text-2xl font-black text-gray-900 mb-4">#${item.pedido_id.slice(0, 4).toUpperCase()}</div>
+                                <button onclick="finalizarItem('${item.fila_id}')" 
+                                    class="w-full bg-gray-900 hover:bg-green-600 text-white py-3 rounded-xl font-bold transition-all">
+                                    CONCLUIR
+                                </button>
+                            </div>
+                        `,
+                          )
+                          .join("")}
+                    </div>
+                </div>`;
+        container.insertAdjacentHTML("beforeend", colunaHTML);
+      });
+  } catch (e) {
+    console.error("Erro ao atualizar painel:", e);
+  }
+}
+
+// 3. Auxiliar para CSRF (Obrigatório no Django)
 function getCookie(name) {
   let cookieValue = null;
   if (document.cookie && document.cookie !== "") {
@@ -95,6 +91,8 @@ function getCookie(name) {
   return cookieValue;
 }
 
-// Inicia o Polling (atualiza a cada 5 segundos)
-refreshPainel();
-setInterval(refreshPainel, 5000);
+// 4. Inicialização
+document.addEventListener("DOMContentLoaded", () => {
+  atualizarPainel();
+  setInterval(atualizarPainel, 5000);
+});

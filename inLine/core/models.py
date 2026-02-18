@@ -93,6 +93,7 @@ class FilaPrato(models.Model):
 
 class TMA(models.Model):
     # Janela móvel de 10 pratos
+    prato = models.ForeignKey(Prato, on_delete=models.CASCADE)
     valor_tma_seg = models.FloatField()
     calculado_em = models.DateTimeField(auto_now_add=True)
     

@@ -3,7 +3,7 @@ from django.views.generic import TemplateView
 from .views import (
     ListPratosAPIView, CreateOrderAPIView, 
     NextOrderAPIView, PainelCozinhaPratoView, 
-    FinalizarPratoView,CreatePratoAPIView,PratoNextAPIView,
+    FinalizarPratoView,CreatePratoAPIView,
 )
 
 urlpatterns = [
@@ -19,7 +19,6 @@ urlpatterns = [
     path('api/v1/pedidos/criar/', CreateOrderAPIView.as_view()),
     path('api/v1/fila/proximo/', NextOrderAPIView.as_view(), name='proximo_pedido'),
     path('api/v1/fila/painel/', PainelCozinhaPratoView.as_view(), name='painel-cozinha'),
-    path('api/v1/fila/finalizar/<uuid:fila_prato_id>/', FinalizarPratoView.as_view(), name='finalizar-prato'),
-    path('api/v1/fila/proximo-prato/<uuid:prato_id>/', PratoNextAPIView.as_view(), name='proximo-por-prato'),
+    path('api/v1/fila/finalizar/<uuid:id>/', FinalizarPratoView.as_view(), name='finalizar-prato'),
     
 ]
