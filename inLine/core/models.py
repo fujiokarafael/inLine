@@ -40,7 +40,7 @@ class Prato(models.Model):
     nome = models.CharField(max_length=100)
     preco = models.DecimalField(max_digits=10, decimal_places=2)
     ativo = models.BooleanField(default=True, db_index=True)
-    tempo_preparo_seg = models.IntegerField()
+    tempo_preparo_seg = models.IntegerField(default=300)
 
     class Meta:
         indexes = [
@@ -74,7 +74,7 @@ class FilaPrato(models.Model):
         constraints = [
             # Garante consistência temporal
             models.CheckConstraint(
-                condition=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
+                check=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
                 name='check_finished_after_started'
             )
         ]
