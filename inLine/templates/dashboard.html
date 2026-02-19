@@ -1,0 +1,179 @@
+{% extends "base.html" %} {% block content %}
+<div class="p-8 bg-slate-50 min-h-screen">
+  <div
+    class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4"
+  >
+    <div>
+      <h1 class="text-3xl font-black text-slate-800 tracking-tighter italic">
+        PAINEL DE CONTROLE
+      </h1>
+      <p class="text-slate-500 font-medium">Gestão em tempo real da operação</p>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <a
+        href="{% url 'gui-caixa' %}"
+        class="bg-blue-600 text-white px-5 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
+      >
+        <span>🛒 Caixa</span>
+      </a>
+      <a
+        href="{% url 'gui-producao' %}"
+        class="bg-slate-800 text-white px-5 py-3 rounded-2xl font-bold shadow-lg shadow-slate-200 hover:bg-slate-900 transition-all flex items-center gap-2"
+      >
+        <span>🍳 Cozinha</span>
+      </a>
+      <a
+        href="{% url 'gui-atendimento' %}"
+        class="bg-emerald-500 text-white px-5 py-3 rounded-2xl font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all flex items-center gap-2"
+      >
+        <span>📢 Atendimento</span>
+      </a>
+    </div>
+  </div>
+
+  <div
+    class="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden"
+  >
+    <div
+      class="p-6 border-b border-slate-50 flex justify-between items-center bg-white"
+    >
+      <h3 class="font-black text-slate-800 uppercase tracking-tighter">
+        Métricas de Produção por Item
+      </h3>
+      <span
+        class="text-[10px] font-black text-slate-400 uppercase tracking-widest"
+        >Atualizado: {% now "H:i:s" %}</span
+      >
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-slate-50/50">
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400"
+            >
+              Prato
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+            >
+              Vendidos (Hoje)
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+            >
+              Fila de Espera
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+            >
+              TMA (Preparo)
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400"
+            >
+              Carga Operacional
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          {% for p in metricas_pratos %}
+          <tr class="hover:bg-slate-50/50 transition-colors">
+            <td class="p-6 font-bold text-slate-800 text-lg">{{ p.nome }}</td>
+            <td class="p-6 text-center">
+              <span class="font-black text-blue-600 text-xl"
+                >{{ p.vendidos_hoje }}</span
+              >
+            </td>
+
+            <td class="p-6 text-center">
+              <span
+                class="inline-block px-4 py-2 rounded-2xl font-black text-xl {% if p.aguardando > 5 %} bg-red-100 text-red-600 animate-pulse {% elif p.aguardando > 0 %} bg-orange-50 text-orange-500 {% else %} bg-slate-100 text-slate-300 {% endif %}"
+              >
+                {{ p.aguardando }}
+              </span>
+            </td>
+
+            <td class="p-6 text-center">
+              <div class="flex flex-col items-center">
+                <span class="font-black text-slate-700 text-xl"
+                  >{{ p.tma_minutos }}</span
+                >
+                <span class="text-[9px] font-bold text-slate-400 uppercase"
+                  >minutos</span
+                >
+              </div>
+            </td>
+
+            <td class="p-6">
+              <div class="flex items-center gap-3">
+                <div
+                  class="flex-1 bg-slate-100 h-2.5 rounded-full overflow-hidden"
+                >
+                  {% if total_geral > 0 %}
+                  <div
+                    class="bg-blue-500 h-full transition-all duration-1000"
+                    style="width: {% widthratio p.vendidos_hoje total_geral 100 %}%"
+                  ></div>
+                  {% else %}
+                  <div class="bg-slate-200 h-full" style="width: 0%"></div>
+                  {% endif %}
+                </div>
+                <span class="text-[10px] font-black text-slate-400">
+                  {% widthratio p.vendidos_hoje total_geral 100 %}%
+                </span>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td
+              colspan="5"
+              class="p-20 text-center text-slate-400 font-medium italic"
+            >
+              Aguardando as primeiras vendas do dia...
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div
+      class="bg-white border-l-4 border-orange-500 p-6 rounded-2xl shadow-sm"
+    >
+      <h4
+        class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2"
+      >
+        Atenção Crítica
+      </h4>
+      <p class="text-slate-600 text-sm">
+        Pratos com mais de <strong>5 unidades</strong> na fila exigem reforço na
+        praça de preparo.
+      </p>
+    </div>
+    <div class="bg-white border-l-4 border-blue-500 p-6 rounded-2xl shadow-sm">
+      <h4
+        class="text-xs font-black text-slate-400 uppercase tracking-widest mb-2"
+      >
+        Otimização de TMA
+      </h4>
+      <p class="text-slate-600 text-sm">
+        O tempo médio é calculado desde a <strong>venda no caixa</strong> até a
+        <strong>finalização na cozinha</strong>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Auto-refresh do Dashboard para o gerente não precisar dar F5
+  setTimeout(() => {
+    location.reload();
+  }, 30000); // Atualiza a cada 30 segundos
+</script>
+{% endblock %}

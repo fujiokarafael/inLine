@@ -1,4 +1,5 @@
 {% extends "base.html" %} {% load static %} {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <div class="flex h-[calc(100vh-64px)] overflow-hidden">
   <div class="flex-1 p-6 overflow-y-auto bg-slate-100 text-slate-900">
@@ -8,14 +9,15 @@
     ></div>
 
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold">Novo Pedido</h1>
+      <h1 class="text-2xl font-bold text-slate-800">Novo Pedido</h1>
       <a
         href="/cadastrar-prato/"
-        class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold"
+        class="bg-white border text-slate-600 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50"
       >
         + Cadastrar Prato
       </a>
     </div>
+
     <div
       id="grid-produtos"
       class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
@@ -52,27 +54,90 @@
   </div>
 </div>
 
+<div
+  id="cupom-impressao"
+  class="hidden print:block text-black p-4 font-mono text-sm w-[80mm]"
+>
+  <div class="text-center border-b border-dashed border-black pb-2 mb-2">
+    <h2 class="text-xl font-bold uppercase">RECIBO DO CLIENTE</h2>
+    <p id="print-data" class="text-[10px]"></p>
+  </div>
+
+  <div class="text-center mb-4">
+    <span class="text-xs block tracking-widest">SUA SENHA</span>
+    <h1 id="print-senha" class="text-5xl font-black">----</h1>
+    <p id="print-tipo" class="font-bold border px-2 inline-block rounded"></p>
+  </div>
+
+  <table class="w-full mb-4 text-xs">
+    <thead>
+      <tr class="border-b border-black">
+        <th class="text-left">ITEM</th>
+        <th class="text-right">TOTAL</th>
+      </tr>
+    </thead>
+    <tbody id="print-itens-corpo"></tbody>
+  </table>
+
+  <div
+    class="border-t border-black pt-2 flex justify-between font-bold text-lg"
+  >
+    <span>TOTAL:</span>
+    <span id="print-total">R$ 0,00</span>
+  </div>
+
+  <div
+    class="mt-4 flex flex-col items-center border-t border-dashed border-black pt-4"
+  >
+    <p class="text-[9px] mb-2 uppercase font-bold text-center">
+      Acompanhe seu pedido online:
+    </p>
+    <div id="qrcode-canvas" class="p-2 bg-white"></div>
+  </div>
+
+  <div class="mt-4 text-center text-[10px]">
+    <p>Obrigado pela preferência!</p>
+    <p>Conserve este cupom para retirar seu pedido.</p>
+  </div>
+</div>
+
+<style>
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    #cupom-impressao,
+    #cupom-impressao * {
+      visibility: visible;
+    }
+    #cupom-impressao {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+    }
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
+  }
+</style>
+
 <script>
   let carrinho = {};
 
-  // --- NOVA FUNÇÃO: CARREGAR MÉDIAS DE TEMPO (TMA) ---
+  // Atualizar Indicadores TMA no Topo
   async function atualizarIndicadoresTMA() {
     const container = document.getElementById("tma-container");
-    if (!container) return;
-
     try {
-      // Ajuste a URL conforme o seu urls.py
       const res = await fetch("/api/v1/metrica/tma-dashboard/");
       if (!res.ok) return;
-
       const dados = await res.json();
-
       if (dados.length === 0) {
         container.innerHTML =
-          '<span class="text-gray-400 text-xs italic">Aguardando dados de produção...</span>';
+          '<span class="text-gray-400 text-xs italic">Aguardando dados...</span>';
         return;
       }
-
       container.innerHTML = dados
         .map(
           (item) => `
@@ -87,40 +152,32 @@
         )
         .join("");
     } catch (e) {
-      console.error("Erro ao carregar indicadores TMA:", e);
+      console.error(e);
     }
   }
 
-  // 1. Buscar pratos do Banco de Dados
+  // Carregar Pratos
   async function carregarMenu() {
     try {
       const res = await fetch("/api/v1/pratos/");
       const pratos = await res.json();
       const grid = document.getElementById("grid-produtos");
-
-      if (pratos.length === 0) {
-        grid.innerHTML =
-          '<p class="col-span-full text-gray-500">Nenhum prato cadastrado.</p>';
-        return;
-      }
-
       grid.innerHTML = pratos
         .map(
           (p) => `
-                <button onclick="adicionarAoCarrinho('${p.id}', '${p.nome}', ${p.preco})" 
-                        class="bg-white p-4 rounded-xl shadow-sm border-2 border-transparent hover:border-blue-500 hover:shadow-md transition-all text-left group">
-                    <p class="font-bold text-gray-800 group-hover:text-blue-600">${p.nome}</p>
-                    <p class="text-blue-600 font-bold">R$ ${parseFloat(p.preco).toFixed(2)}</p>
-                </button>
-            `,
+          <button onclick="adicionarAoCarrinho('${p.id}', '${p.nome}', ${p.preco})" 
+                  class="bg-white p-4 rounded-xl shadow-sm border-2 border-transparent hover:border-blue-500 hover:shadow-md transition-all text-left group">
+              <p class="font-bold text-gray-800 group-hover:text-blue-600">${p.nome}</p>
+              <p class="text-blue-600 font-bold">R$ ${parseFloat(p.preco).toFixed(2)}</p>
+          </button>
+      `,
         )
         .join("");
     } catch (e) {
-      console.error("Erro ao carregar menu:", e);
+      console.error(e);
     }
   }
 
-  // 2. Adicionar item ao objeto carrinho
   function adicionarAoCarrinho(id, nome, preco) {
     if (carrinho[id]) {
       carrinho[id].qtd += 1;
@@ -130,14 +187,12 @@
     renderizarCarrinho();
   }
 
-  // 3. Alterar quantidade (+ ou -)
   function alterarQtd(id, delta) {
     carrinho[id].qtd += delta;
     if (carrinho[id].qtd <= 0) delete carrinho[id];
     renderizarCarrinho();
   }
 
-  // 4. Atualizar a interface do carrinho e o total
   function renderizarCarrinho() {
     const lista = document.getElementById("lista-carrinho");
     const totalElemento = document.getElementById("total-pedido");
@@ -145,7 +200,7 @@
 
     if (itensIds.length === 0) {
       lista.innerHTML =
-        '<p id="carrinho-vazio" class="text-gray-400 text-center mt-10">Carrinho vazio</p>';
+        '<p class="text-gray-400 text-center mt-10">Carrinho vazio</p>';
       totalElemento.innerText = "R$ 0,00";
       return;
     }
@@ -156,54 +211,91 @@
         const item = carrinho[id];
         totalGeral += item.preco * item.qtd;
         return `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
-                    <div class="flex-1">
-                        <p class="font-bold text-sm text-gray-800">${item.nome}</p>
-                        <p class="text-xs text-gray-500">R$ ${item.preco.toFixed(2)} un.</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="alterarQtd('${id}', -1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">-</button>
-                        <span class="font-bold w-4 text-center">${item.qtd}</span>
-                        <button onclick="alterarQtd('${id}', 1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">+</button>
-                    </div>
-                </div>
-            `;
+        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+            <div class="flex-1">
+                <p class="font-bold text-sm text-gray-800">${item.nome}</p>
+                <p class="text-xs text-gray-500">R$ ${item.preco.toFixed(2)}</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="alterarQtd('${id}', -1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">-</button>
+                <span class="font-bold w-4 text-center">${item.qtd}</span>
+                <button onclick="alterarQtd('${id}', 1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">+</button>
+            </div>
+        </div>
+      `;
       })
       .join("");
-
     totalElemento.innerText = `R$ ${totalGeral.toFixed(2)}`;
   }
 
-  // 5. Enviar para o Backend (Service Layer)
+  // --- FUNÇÃO FINALIZAR COM IMPRESSÃO E QR CODE ---
   async function finalizarPedido(tipo) {
     const itens = Object.keys(carrinho).map((id) => ({
       prato_id: id,
       quantidade: carrinho[id].qtd,
     }));
+    if (itens.length === 0) return alert("Adicione itens!");
 
-    if (itens.length === 0) return alert("Adicione itens ao carrinho!");
+    try {
+      const res = await fetch("/api/v1/pedidos/criar/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, itens }),
+      });
 
-    const res = await fetch("/api/v1/pedidos/criar/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo, itens }),
-    });
+      if (res.ok) {
+        const dados = await res.json();
 
-    if (res.ok) {
-      alert("Pedido enviado para produção!");
-      carrinho = {};
-      renderizarCarrinho();
-    } else {
-      const err = await res.json();
-      alert("Erro: " + (err.error || "Falha na comunicação"));
+        // 1. Preencher Cupom
+        document.getElementById("print-senha").innerText = dados.senha;
+        document.getElementById("print-data").innerText =
+          new Date().toLocaleString();
+        document.getElementById("print-tipo").innerText = tipo;
+        document.getElementById("print-total").innerText =
+          document.getElementById("total-pedido").innerText;
+
+        const corpoItens = document.getElementById("print-itens-corpo");
+        corpoItens.innerHTML = Object.values(carrinho)
+          .map(
+            (item) => `
+          <tr><td class="py-1">${item.qtd}x ${item.nome}</td><td class="text-right">R$ ${(item.preco * item.qtd).toFixed(2)}</td></tr>
+        `,
+          )
+          .join("");
+
+        // 2. Gerar QR Code
+        document.getElementById("qrcode-canvas").innerHTML = ""; // Limpa anterior
+
+        let urlBase =
+          dados.status_url ||
+          window.location.origin + "/acompanhamento/" + dados.id;
+
+        const linkFinal = urlBase.endsWith("/") ? urlBase : urlBase + "/";
+
+        new QRCode(document.getElementById("qrcode-canvas"), {
+          text: linkFinal, // IMPORTANTE: usar a variável corrigida aqui
+          width: 100,
+          height: 100,
+          correctLevel: QRCode.CorrectLevel.H, // Aumenta a tolerância a erros para impressão
+        });
+
+        // 3. Imprimir
+        setTimeout(() => {
+          window.print();
+          carrinho = {};
+          renderizarCarrinho();
+        }, 500);
+      } else {
+        alert("Erro ao criar pedido.");
+      }
+    } catch (e) {
+      console.error(e);
     }
   }
 
-  // Iniciar e Polling
   window.onload = () => {
     carregarMenu();
     atualizarIndicadoresTMA();
-    // Atualiza os tempos a cada 30 segundos
     setInterval(atualizarIndicadoresTMA, 30000);
   };
 </script>

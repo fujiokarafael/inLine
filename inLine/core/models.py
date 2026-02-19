@@ -69,6 +69,7 @@ class FilaPrato(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True, db_index=True)
     usado_em_metrica = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         constraints = [

@@ -1,4 +1,7 @@
 
+from django.db.models import Count, Avg, F, ExpressionWrapper, fields, Q
+from django.shortcuts import render, get_object_or_404
+from django.views import View
 from django.db import transaction, models
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,7 +11,7 @@ from .services import (
     create_order,
     finalize_prato,
 )
-from .models import Pedido, FilaPrato, Prato
+from .models import Pedido, FilaPrato, Prato, TMA
 
 class CreatePratoAPIView(APIView):
     def post(self, request):
@@ -37,19 +40,38 @@ class CreatePratoAPIView(APIView):
 
 class CreateOrderAPIView(APIView):
     def post(self, request):
+        # Captura os dados enviados pelo JavaScript
         tipo = request.data.get("tipo")
-        itens = request.data.get("itens", []) # Formato: [{"prato_id": "uuid", "quantidade": 1}]
+        itens = request.data.get("itens", [])
         
         try:
+            # Chama o service que cria o pedido e os itens da fila (FilaPrato)
             pedido = create_order(tipo=tipo, itens=itens)
+            
+            # Identifica o host (IP local ou URL do Codespaces)
+            host = request.get_host() 
+            status_url = f"http://{host}/acompanhamento/{str(pedido.id)}/"
+            
+            # Retorna o JSON estruturado para o Frontend gerar o Cupom e o QR Code
             return Response({
                 "id": str(pedido.id),
-                "total": str(pedido.total),
-                "status": pedido.status
+                "senha": str(pedido.id)[:4].upper(),
+                "total": float(pedido.total),
+                "tipo": pedido.tipo,
+                "status_url": status_url,
+                "criado_em": pedido.created_at.strftime("%H:%M:%S"),
+                "itens": [
+                    {
+                        "prato": item.prato.nome, 
+                        "preco": float(item.preco_unitario)
+                    } for item in pedido.filas.all()
+                ]
             }, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        except Exception as e:
+            # Retorna erro amigável se algo falhar no service
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
 # =========================
 # PRÓXIMO PEDIDO (CAIXA / FILA LÓGICA)
 # =========================
@@ -204,3 +226,51 @@ class TMADashboardAPIView(APIView):
             })
 
         return Response(data, status=200)
+
+# acompanhar pedido   
+class AcompanhamentoPedidoView(View):
+    def get(self, request, pedido_id):
+        # Busca o pedido ou retorna 404
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        
+        # Passamos o pedido para o template
+        return render(request, 'acompanhamento.html', {'pedido': pedido})
+
+# Painel central
+class DashboardView(View):
+    def get(self, request):
+        hoje = timezone.now().date()
+        
+        # Total geral para cálculos de ranking
+        total_geral = FilaPrato.objects.filter(created_at__date=hoje).count()
+
+        # MÉTRICA POR PRATO: 
+        # Buscamos todos os pratos e trazemos as contagens e médias específicas
+        metricas_pratos = Prato.objects.annotate(
+            # 1. Quantidade vendida hoje
+            vendidos_hoje=Count('filaprato', filter=Q(filaprato__created_at__date=hoje)),
+            
+            # 2. Quantidade AGUARDANDO (Status PENDENTE)
+            aguardando=Count('filaprato', filter=Q(filaprato__status='PENDENTE')),
+            
+            # 3. Tempo Médio de Produção (TMA) específico deste prato
+            tma_especifico=Avg(
+                ExpressionWrapper(
+                    F('filaprato__updated_at') - F('filaprato__created_at'),
+                    output_field=fields.DurationField()
+                ),
+                filter=Q(filaprato__status='FINALIZADO', filaprato__updated_at__date=hoje)
+            )
+        ).order_by('-vendidos_hoje')
+
+        # Tratamento do TMA para minutos (Python side)
+        for p in metricas_pratos:
+            if p.tma_especifico:
+                p.tma_minutos = round(p.tma_especifico.total_seconds() / 60, 1)
+            else:
+                p.tma_minutos = 0
+
+        return render(request, 'dashboard.html', {
+            'metricas_pratos': metricas_pratos,
+            'total_geral': total_geral,
+        })
