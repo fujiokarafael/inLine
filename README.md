@@ -295,12 +295,16 @@ Estado:
 - Django REST Framework
 - SQLite (WAL)
 - Execução local
+- HTML5
+- CSS3 (Tailwind)
+- JavaScript
 
 ---
 
 ## 🛡️ Restrições de Projeto
 
 ❌ Sem Redis
+❌ Sem Memcached
 ❌ Sem Kafka
 ❌ Sem RabbitMQ
 ❌ Sem cloud
