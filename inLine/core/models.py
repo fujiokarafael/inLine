@@ -75,7 +75,7 @@ class FilaPrato(models.Model):
         constraints = [
             # Garante consistência temporal
             models.CheckConstraint(
-                check=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
+                condition=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
                 name='check_finished_after_started'
             )
         ]
