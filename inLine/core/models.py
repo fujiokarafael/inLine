@@ -1,6 +1,5 @@
 import uuid
 from django.db import models
-from django.db.models import Q, F
 
 
 
@@ -72,13 +71,6 @@ class FilaPrato(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [
-            # Garante consistência temporal
-            models.CheckConstraint(
-                condition=Q(finished_at__gte=F('started_at')) | Q(finished_at__isnull=True),
-                name='check_finished_after_started'
-            )
-        ]
         indexes = [
             models.Index(fields=["prato", "status", "created_at"]),
             models.Index(fields=["status"]),

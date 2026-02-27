@@ -295,19 +295,16 @@ class MonitorPedidosView(TemplateView):
 
 class MonitorPedidosAPIView(APIView):
     def get(self, request):
-        # Filtramos apenas o que é relevante para o cliente ver
+        # Filtramos apenas pedidos que ainda não foram marcados como RETIRADOS
+        # Adicionamos uma ordenação para que os novos apareçam primeiro
         pedidos = Pedido.objects.filter(
             status__in=[Pedido.Status.PENDENTE, Pedido.Status.PRODUCAO, Pedido.Status.FINALIZADO]
-        ).order_by('created_at')
+        ).order_by('-created_at')
 
-        data = {
-            "pendentes": [],
-            "preparando": [],
-            "prontos": []
-        }
+        data = {"pendentes": [], "preparando": [], "prontos": []}
 
         for p in pedidos:
-            # Geramos a senha curta idêntica à do cupom
+            # Lógica de senha consistente com o que você já usa
             senha = str(p.id).split('-')[0][:4].upper()
             item = {"senha": senha, "tipo": p.tipo}
             

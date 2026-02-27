@@ -71,30 +71,40 @@ def create_order(tipo, itens):
 # =========================
 
 def finalize_prato(fila_id):
-    """
-    Finaliza um item da fila de forma atômica.
-    Retorna o objeto se finalizado com sucesso, ou None se falhar.
-    """
     try:
         with transaction.atomic():
-            # Busca o item com select_for_update para evitar que dois 
-            # cliques finalizem o mesmo registro simultaneamente
-            item = FilaPrato.objects.select_for_update().filter(
-                id=fila_id, 
-                status=FilaPrato.Status.PENDENTE
-            ).first()
+            # 1. Busca o item específico (select_for_update evita duplicidade)
+            item = FilaPrato.objects.select_for_update().filter(id=fila_id).first()
 
-            if not item:
+            if not item or item.status == FilaPrato.Status.FINALIZADO:
                 return None
 
-            # Atualiza o status
+            # 2. Atualiza o status do item
             item.status = FilaPrato.Status.FINALIZADO
             item.save(update_fields=['status'])
             
+            # 3. VERIFICAÇÃO CRÍTICA: O Pedido Pai
+            pedido = item.pedido
+            
+            # Buscamos se existe QUALQUER prato desse pedido que ainda esteja 
+            # PENDENTE ou EM_PRODUCAO.
+            # Se .exists() for False, significa que todos estão FINALIZADOS.
+            tem_itens_em_aberto = FilaPrato.objects.filter(
+                pedido=pedido
+            ).exclude(
+                status__in=[FilaPrato.Status.FINALIZADO, FilaPrato.Status.RETIRADO]
+            ).exists()
+
+            if not tem_itens_em_aberto:
+                pedido.status = Pedido.Status.FINALIZADO
+                pedido.save(update_fields=['status'])
+                # Log de debug interno (opcional)
+                print(f"DEBUG: Pedido {pedido.id} movido para FINALIZADO")
+            
             return item
     except Exception as e:
-        print(f"Erro crítico em finalize_prato: {e}")
-        return None
+        print(f"ERRO NO SERVICE: {e}")
+        raise e
 
 
 # =========================
