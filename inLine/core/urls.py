@@ -4,7 +4,7 @@ from .views import (
     ListPratosAPIView, CreateOrderAPIView, 
     NextOrderAPIView, PainelCozinhaPratoView, 
     FinalizarPratoView,CreatePratoAPIView, TMADashboardAPIView,
-    AcompanhamentoPedidoView,DashboardView,
+    AcompanhamentoPedidoView,DashboardView, MonitorPedidosView, MonitorPedidosAPIView,
 )
 
 urlpatterns = [
@@ -14,7 +14,8 @@ urlpatterns = [
     path('producao/', TemplateView.as_view(template_name="producao.html"), name='gui-producao'),
     path('cadastrar-prato/', TemplateView.as_view(template_name="cadastrar_prato.html"), name='gui-cadastrar'),
     path('', DashboardView.as_view(), name='dashboard-central'), # Home do sistema,
-    path('acompanhamento/<str:pedido_id>/', AcompanhamentoPedidoView.as_view(), name='acompanhamento_pedido'),   
+    path('acompanhamento/<str:pedido_id>/', AcompanhamentoPedidoView.as_view(), name='acompanhamento_pedido'),
+    path('monitor/', MonitorPedidosView.as_view(), name='monitor-cliente'),   
 
     # API - O JavaScript deve usar esse prefixo
     path('api/v1/pratos/', ListPratosAPIView.as_view()),
@@ -24,5 +25,6 @@ urlpatterns = [
     path('api/v1/fila/painel/', PainelCozinhaPratoView.as_view(), name='painel-cozinha'),
     path('api/v1/fila/finalizar/<uuid:id>/', FinalizarPratoView.as_view(), name='finalizar-prato'),
     path('api/v1/metrica/tma-dashboard/', TMADashboardAPIView.as_view(), name='tma'),
+    path('api/v1/monitor/pedidos/', MonitorPedidosAPIView.as_view(), name='api-monitor-pedidos'),
      
 ]

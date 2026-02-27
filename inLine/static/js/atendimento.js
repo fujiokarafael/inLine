@@ -56,14 +56,14 @@ async function carregarListaPendentes() {
 
 async function chamarProximo() {
   const btn = document.getElementById("btn-chamar");
-  btn.disabled = true; // Evita cliques duplos
+  btn.disabled = true;
 
   try {
     const res = await fetch("/api/v1/fila/proximo/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": getCookie("csrftoken"), // Segurança do Django
+        "X-CSRFToken": getCookie("csrftoken"),
       },
     });
 
@@ -72,14 +72,13 @@ async function chamarProximo() {
     } else if (res.ok) {
       const p = await res.json();
 
-      // Atualiza o Painel Grande
-      const senha = String(p.pedido_id).slice(0, 4).toUpperCase();
-      document.getElementById("senha-display").innerText = senha;
+      // 1. Atualiza o display visual com a senha vinda do servidor
+      document.getElementById("senha-display").innerText = p.senha;
 
-      // Som de alerta (opcional/feedback visual)
-      console.log("Chamando senha: " + senha);
+      // 2. Dispara a lógica de impressão (usando o JSON completo)
+      imprimirCupomAtendente(p);
 
-      // Atualiza a fila lateral imediatamente
+      // 3. Atualiza a lista lateral
       carregarListaPendentes();
     }
   } catch (e) {
@@ -87,6 +86,32 @@ async function chamarProximo() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function imprimirCupomAtendente(p) {
+  // Monta o texto para a impressora ou console
+  const itensTexto = p.itens
+    .map((i) => `${i.quantidade}x ${i.nome}`)
+    .join("\n");
+
+  const cupom = `
+============================
+   ENTREGA DE PRODUTOS
+============================
+SENHA: ${p.senha}
+TIPO:  ${p.tipo}
+HORA:  ${p.hora_impressao}
+----------------------------
+ITENS DO PEDIDO:
+${itensTexto}
+----------------------------
+TOTAL DE ITENS: ${p.total_itens}
+============================
+  `;
+
+  console.log(cupom);
+  // Se quiser abrir a caixa de impressão do navegador:
+  // prepararJanelaImpressao(cupom);
 }
 
 // Função auxiliar para o Token de Segurança do Django

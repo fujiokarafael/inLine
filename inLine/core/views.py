@@ -2,6 +2,7 @@
 from django.db.models import Count, Avg, F, ExpressionWrapper, fields, Q
 from django.shortcuts import render, get_object_or_404
 from django.views import View
+from django.views.generic import TemplateView
 from django.db import transaction, models
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -108,8 +109,6 @@ class NextOrderAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        """Algoritmo de captura de SENHA (Painel Central)"""
-        # Seleciona com Lock (select_for_update) para evitar chamadas duplas
         pedido = Pedido.objects.filter(
             status=Pedido.Status.PENDENTE
         ).order_by(
@@ -123,13 +122,29 @@ class NextOrderAPIView(APIView):
         if not pedido:
             return Response(status=status.HTTP_204_NO_CONTENT)
 
+        # 1. Geramos a senha a partir dos primeiros 4 dígitos do UUID (em maiúsculo)
+        senha_gerada = str(pedido.id).split('-')[0][:4].upper()
+
+        # 2. Buscamos os itens na FilaPrato
+        itens_qs = FilaPrato.objects.filter(pedido=pedido).values('prato__nome').annotate(
+            qtd=models.Count('id')
+        )
+        
+        itens_formatados = [
+            {"nome": item['prato__nome'], "quantidade": item['qtd']} 
+            for item in itens_qs
+        ]
+
         pedido.status = Pedido.Status.PRODUCAO
         pedido.save(update_fields=['status'])
 
         return Response({
             "pedido_id": str(pedido.id),
-            "senha": str(pedido.id).upper()[:4],
-            "tipo": pedido.tipo
+            "senha": senha_gerada,  # Enviamos a senha pronta para o JS
+            "tipo": pedido.tipo,
+            "itens": itens_formatados,
+            "total_itens": sum(item['qtd'] for item in itens_qs),
+            "hora_impressao": timezone.now().strftime("%H:%M")
         }, status=status.HTTP_200_OK)
     
 # =========================
@@ -274,3 +289,33 @@ class DashboardView(View):
             'metricas_pratos': metricas_pratos,
             'total_geral': total_geral,
         })
+
+class MonitorPedidosView(TemplateView):
+    template_name = "monitor_cliente.html"
+
+class MonitorPedidosAPIView(APIView):
+    def get(self, request):
+        # Filtramos apenas o que é relevante para o cliente ver
+        pedidos = Pedido.objects.filter(
+            status__in=[Pedido.Status.PENDENTE, Pedido.Status.PRODUCAO, Pedido.Status.FINALIZADO]
+        ).order_by('created_at')
+
+        data = {
+            "pendentes": [],
+            "preparando": [],
+            "prontos": []
+        }
+
+        for p in pedidos:
+            # Geramos a senha curta idêntica à do cupom
+            senha = str(p.id).split('-')[0][:4].upper()
+            item = {"senha": senha, "tipo": p.tipo}
+            
+            if p.status == Pedido.Status.PENDENTE:
+                data["pendentes"].append(item)
+            elif p.status == Pedido.Status.PRODUCAO:
+                data["preparando"].append(item)
+            elif p.status == Pedido.Status.FINALIZADO:
+                data["prontos"].append(item)
+
+        return Response(data)
