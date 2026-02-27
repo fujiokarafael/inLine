@@ -295,24 +295,28 @@ class MonitorPedidosView(TemplateView):
 
 class MonitorPedidosAPIView(APIView):
     def get(self, request):
-        # Filtramos apenas pedidos que ainda não foram marcados como RETIRADOS
-        # Adicionamos uma ordenação para que os novos apareçam primeiro
-        pedidos = Pedido.objects.filter(
-            status__in=[Pedido.Status.PENDENTE, Pedido.Status.PRODUCAO, Pedido.Status.FINALIZADO]
-        ).order_by('-created_at')
+        try:
+            # Se o erro for 'updated_at', volte para 'created_at' temporariamente
+            pedidos = Pedido.objects.filter(
+                status__in=[Pedido.Status.PENDENTE, Pedido.Status.PRODUCAO, Pedido.Status.FINALIZADO]
+            ).order_by('-created_at') # Teste com created_at primeiro
 
-        data = {"pendentes": [], "preparando": [], "prontos": []}
+            data = {"pendentes": [], "preparando": [], "prontos": []}
 
-        for p in pedidos:
-            # Lógica de senha consistente com o que você já usa
-            senha = str(p.id).split('-')[0][:4].upper()
-            item = {"senha": senha, "tipo": p.tipo}
-            
-            if p.status == Pedido.Status.PENDENTE:
-                data["pendentes"].append(item)
-            elif p.status == Pedido.Status.PRODUCAO:
-                data["preparando"].append(item)
-            elif p.status == Pedido.Status.FINALIZADO:
-                data["prontos"].append(item)
+            for p in pedidos:
+                # O split de UUID pode falhar se o ID for nulo ou formato estranho
+                senha = str(p.id).split('-')[0][:4].upper() if p.id else "0000"
+                item = {"senha": senha, "tipo": p.tipo}
+                
+                if p.status == Pedido.Status.PENDENTE:
+                    data["pendentes"].append(item)
+                elif p.status == Pedido.Status.PRODUCAO:
+                    data["preparando"].append(item)
+                elif p.status == Pedido.Status.FINALIZADO:
+                    data["prontos"].append(item)
 
-        return Response(data)
+            return Response(data)
+        except Exception as e:
+            # Isso vai imprimir o erro exato no terminal do Django
+            print(f"ERRO CRÍTICO NA API: {e}")
+            return Response({"error": str(e)}, status=500)

@@ -1,6 +1,17 @@
 {% extends "base.html" %} {% block content %}
 <div class="max-w-2xl mx-auto p-8 bg-white shadow-lg mt-10 rounded-2xl">
-  <h1 class="text-2xl font-bold mb-6 text-gray-800">CADASTRAR ITEM DO MENU</h1>
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold text-gray-800 uppercase tracking-tighter">
+      Cadastrar Item do Menu
+    </h1>
+    <a
+      href="{% url 'gui-caixa' %}"
+      class="text-gray-400 hover:text-gray-600 font-bold text-sm flex items-center gap-1 transition-colors"
+    >
+      ✕ Cancelar
+    </a>
+  </div>
+
   <form id="form-prato" class="space-y-4">
     <div>
       <label class="block text-sm font-medium text-gray-700"
@@ -40,12 +51,22 @@
         />
       </div>
     </div>
-    <button
-      type="submit"
-      class="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-700 transition-colors"
-    >
-      SALVAR NO SISTEMA LOCAL
-    </button>
+
+    <div class="flex flex-col gap-3 pt-4">
+      <button
+        type="submit"
+        class="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-100"
+      >
+        SALVAR E VOLTAR
+      </button>
+
+      <a
+        href="{% url 'gui-caixa' %}"
+        class="w-full bg-slate-100 text-slate-500 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors text-center text-sm"
+      >
+        VOLTAR PARA O CAIXA
+      </a>
+    </div>
   </form>
 </div>
 
@@ -60,15 +81,23 @@
         tempo_preparo_seg: document.getElementById("tempo").value,
       };
 
-      const res = await fetch("/api/v1/pratos/criar/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      try {
+        const res = await fetch("/api/v1/pratos/criar/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      if (res.ok) {
-        alert("Prato cadastrado com sucesso!");
-        e.target.reset();
+        if (res.ok) {
+          // Em vez de apenas resetar, redirecionamos para o caixa
+          alert("Prato cadastrado com sucesso! Redirecionando...");
+          window.location.href = "{% url 'gui-caixa' %}";
+        } else {
+          alert("Erro ao cadastrar prato. Verifique os dados.");
+        }
+      } catch (error) {
+        console.error("Erro na requisição:", error);
+        alert("Erro de conexão com o servidor local.");
       }
     });
 </script>

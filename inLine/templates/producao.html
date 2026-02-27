@@ -1,13 +1,47 @@
 {% extends "base.html" %} {% load static %} {% block content %}
 <div class="bg-gray-900 min-h-screen flex flex-col p-4 overflow-hidden">
   <header class="flex justify-between items-center mb-6 px-4">
-    <div>
-      <h1 class="text-white text-2xl font-black uppercase tracking-widest">
-        Painel de Produção
-      </h1>
-      <p class="text-blue-500 text-[10px] font-black uppercase">
-        Fila por Estação de Prato
-      </p>
+    <div class="flex items-center gap-5">
+      <a
+        href="{% url 'dashboard-central' %}"
+        class="bg-gray-800 text-gray-400 p-2.5 rounded-xl hover:bg-gray-700 hover:text-white transition-all shadow-lg border border-gray-700 flex items-center justify-center"
+        title="Voltar ao Painel de Controle"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+          />
+        </svg>
+      </a>
+
+      <div>
+        <h1
+          class="text-white text-2xl font-black uppercase tracking-widest leading-none"
+        >
+          Painel de Produção
+        </h1>
+        <p
+          class="text-blue-500 text-[10px] font-black uppercase tracking-tighter mt-1"
+        >
+          Fila por Estação de Prato
+        </p>
+      </div>
+    </div>
+
+    <div
+      id="status-conexao"
+      class="text-[10px] font-bold text-gray-600 uppercase tracking-widest"
+    >
+      Sistema Online
     </div>
   </header>
 
@@ -34,7 +68,6 @@
     background: #374151;
     border-radius: 10px;
   }
-  /* Animação para novos itens que entram na fila */
   .animate-card {
     animation: slideUp 0.3s ease-out forwards;
   }

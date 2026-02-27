@@ -33,12 +33,13 @@ async function atualizarPainel() {
                 </div>`;
     });
 
-    // 4. RENDERIZAR PRONTOS (Verde/Destaque)
+    // 4. RENDERIZAR PRONTOS (Verde/Destaque - Ajustado para Grid 2 Colunas)
     data.prontos.forEach((p) => {
+      // Reduzimos o padding (p-4) e o tamanho da fonte (text-4xl) para caberem 2 por linha
       colunas.prontos.innerHTML += `
-                <div class="bg-white p-6 rounded-[2rem] text-center shadow-xl border-l-8 border-emerald-400">
-                    <div class="text-6xl font-black text-emerald-600 tracking-tighter">${p.senha}</div>
-                    <div class="text-[10px] font-bold text-slate-300 uppercase mt-1 tracking-widest">${p.tipo}</div>
+                <div class="bg-white p-4 rounded-[1.5rem] text-center shadow-xl border-b-8 border-emerald-600 transform transition-all">
+                    <div class="text-4xl font-black text-emerald-600 tracking-tighter">${p.senha}</div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">${p.tipo}</div>
                 </div>`;
     });
   } catch (e) {

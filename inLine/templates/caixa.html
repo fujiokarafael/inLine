@@ -9,10 +9,37 @@
     ></div>
 
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-slate-800">Novo Pedido</h1>
+      <div class="flex items-center gap-4">
+        <a
+          href="{% url 'dashboard-central' %}"
+          class="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-900 transition-colors shadow-sm"
+          title="Voltar ao Painel de Controle"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+            />
+          </svg>
+        </a>
+        <h1
+          class="text-2xl font-black text-slate-800 tracking-tighter italic uppercase"
+        >
+          Novo Pedido
+        </h1>
+      </div>
+
       <a
         href="/cadastrar-prato/"
-        class="bg-white border text-slate-600 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50"
+        class="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50 transition-all"
       >
         + Cadastrar Prato
       </a>
@@ -24,29 +51,35 @@
     ></div>
   </div>
 
-  <div class="w-96 bg-white shadow-xl flex flex-col p-6 border-l">
-    <h2 class="text-xl font-bold border-b pb-4">Resumo do Pedido</h2>
+  <div
+    class="w-96 bg-white shadow-2xl flex flex-col p-6 border-l border-slate-200"
+  >
+    <h2
+      class="text-xl font-black border-b border-slate-100 pb-4 text-slate-800 uppercase tracking-tight"
+    >
+      Resumo do Pedido
+    </h2>
 
     <div id="lista-carrinho" class="flex-1 overflow-y-auto py-4 space-y-4">
-      <p id="carrinho-vazio" class="text-gray-400 text-center mt-10">
+      <p id="carrinho-vazio" class="text-gray-400 text-center mt-10 italic">
         Carrinho vazio
       </p>
     </div>
 
-    <div class="border-t pt-4 space-y-3">
-      <div class="flex justify-between text-xl font-bold mb-4">
-        <span>Total:</span>
-        <span id="total-pedido" class="text-green-600">R$ 0,00</span>
+    <div class="border-t border-slate-100 pt-4 space-y-3">
+      <div class="flex justify-between text-xl font-black mb-4 px-2">
+        <span class="text-slate-500 uppercase text-sm self-center">Total:</span>
+        <span id="total-pedido" class="text-green-600 text-3xl">R$ 0,00</span>
       </div>
       <button
         onclick="finalizarPedido('NORMAL')"
-        class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 active:scale-95 transition-transform"
+        class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-100"
       >
         PEDIDO NORMAL
       </button>
       <button
         onclick="finalizarPedido('PREFERENCIAL')"
-        class="w-full bg-red-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-red-700 active:scale-95 transition-transform"
+        class="w-full bg-red-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-red-700 active:scale-95 transition-all shadow-lg shadow-red-100"
       >
         PREFERENCIAL
       </button>
@@ -62,13 +95,11 @@
     <h2 class="text-xl font-bold uppercase">RECIBO DO CLIENTE</h2>
     <p id="print-data" class="text-[10px]"></p>
   </div>
-
   <div class="text-center mb-4">
     <span class="text-xs block tracking-widest">SUA SENHA</span>
     <h1 id="print-senha" class="text-5xl font-black">----</h1>
     <p id="print-tipo" class="font-bold border px-2 inline-block rounded"></p>
   </div>
-
   <table class="w-full mb-4 text-xs">
     <thead>
       <tr class="border-b border-black">
@@ -78,14 +109,12 @@
     </thead>
     <tbody id="print-itens-corpo"></tbody>
   </table>
-
   <div
     class="border-t border-black pt-2 flex justify-between font-bold text-lg"
   >
     <span>TOTAL:</span>
     <span id="print-total">R$ 0,00</span>
   </div>
-
   <div
     class="mt-4 flex flex-col items-center border-t border-dashed border-black pt-4"
   >
@@ -93,11 +122,6 @@
       Acompanhe seu pedido online:
     </p>
     <div id="qrcode-canvas" class="p-2 bg-white"></div>
-  </div>
-
-  <div class="mt-4 text-center text-[10px]">
-    <p>Obrigado pela preferência!</p>
-    <p>Conserve este cupom para retirar seu pedido.</p>
   </div>
 </div>
 
@@ -121,12 +145,19 @@
       margin: 0;
     }
   }
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+  }
 </style>
 
 <script>
   let carrinho = {};
 
-  // Atualizar Indicadores TMA no Topo
+  // Funções de API e Lógica de Interface
   async function atualizarIndicadoresTMA() {
     const container = document.getElementById("tma-container");
     try {
@@ -141,7 +172,7 @@
       container.innerHTML = dados
         .map(
           (item) => `
-          <div class="bg-white border-l-4 ${item.status === "alerta" ? "border-red-500" : "border-blue-500"} p-3 rounded-lg min-w-[140px] shadow-sm flex flex-col">
+          <div class="bg-white border-l-4 ${item.status === "alerta" ? "border-red-500" : "border-blue-500"} p-3 rounded-lg min-w-[140px] shadow-sm flex flex-col transition-all hover:shadow-md">
               <span class="text-[10px] text-gray-400 font-black uppercase tracking-widest truncate">${item.prato_nome}</span>
               <div class="flex items-baseline gap-1">
                   <span class="text-xl font-black text-slate-800">${item.tma_minutos}</span>
@@ -156,7 +187,6 @@
     }
   }
 
-  // Carregar Pratos
   async function carregarMenu() {
     try {
       const res = await fetch("/api/v1/pratos/");
@@ -168,7 +198,7 @@
           <button onclick="adicionarAoCarrinho('${p.id}', '${p.nome}', ${p.preco})" 
                   class="bg-white p-4 rounded-xl shadow-sm border-2 border-transparent hover:border-blue-500 hover:shadow-md transition-all text-left group">
               <p class="font-bold text-gray-800 group-hover:text-blue-600">${p.nome}</p>
-              <p class="text-blue-600 font-bold">R$ ${parseFloat(p.preco).toFixed(2)}</p>
+              <p class="text-blue-600 font-black">R$ ${parseFloat(p.preco).toFixed(2)}</p>
           </button>
       `,
         )
@@ -178,6 +208,7 @@
     }
   }
 
+  // --- Funções do Carrinho ---
   function adicionarAoCarrinho(id, nome, preco) {
     if (carrinho[id]) {
       carrinho[id].qtd += 1;
@@ -200,7 +231,7 @@
 
     if (itensIds.length === 0) {
       lista.innerHTML =
-        '<p class="text-gray-400 text-center mt-10">Carrinho vazio</p>';
+        '<p class="text-gray-400 text-center mt-10 italic">Carrinho vazio</p>';
       totalElemento.innerText = "R$ 0,00";
       return;
     }
@@ -211,15 +242,15 @@
         const item = carrinho[id];
         totalGeral += item.preco * item.qtd;
         return `
-        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
             <div class="flex-1">
-                <p class="font-bold text-sm text-gray-800">${item.nome}</p>
-                <p class="text-xs text-gray-500">R$ ${item.preco.toFixed(2)}</p>
+                <p class="font-bold text-sm text-slate-800">${item.nome}</p>
+                <p class="text-xs text-slate-500">R$ ${item.preco.toFixed(2)}</p>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="alterarQtd('${id}', -1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">-</button>
+                <button onclick="alterarQtd('${id}', -1)" class="w-8 h-8 bg-white border rounded shadow-sm font-black hover:bg-slate-100">-</button>
                 <span class="font-bold w-4 text-center">${item.qtd}</span>
-                <button onclick="alterarQtd('${id}', 1)" class="w-8 h-8 bg-white border rounded shadow-sm font-bold">+</button>
+                <button onclick="alterarQtd('${id}', 1)" class="w-8 h-8 bg-white border rounded shadow-sm font-black hover:bg-slate-100">+</button>
             </div>
         </div>
       `;
@@ -228,13 +259,12 @@
     totalElemento.innerText = `R$ ${totalGeral.toFixed(2)}`;
   }
 
-  // --- FUNÇÃO FINALIZAR COM IMPRESSÃO E QR CODE ---
   async function finalizarPedido(tipo) {
     const itens = Object.keys(carrinho).map((id) => ({
       prato_id: id,
       quantidade: carrinho[id].qtd,
     }));
-    if (itens.length === 0) return alert("Adicione itens!");
+    if (itens.length === 0) return alert("O carrinho está vazio!");
 
     try {
       const res = await fetch("/api/v1/pedidos/criar/", {
@@ -245,8 +275,6 @@
 
       if (res.ok) {
         const dados = await res.json();
-
-        // 1. Preencher Cupom
         document.getElementById("print-senha").innerText = dados.senha;
         document.getElementById("print-data").innerText =
           new Date().toLocaleString();
@@ -263,23 +291,19 @@
           )
           .join("");
 
-        // 2. Gerar QR Code
-        document.getElementById("qrcode-canvas").innerHTML = ""; // Limpa anterior
-
+        document.getElementById("qrcode-canvas").innerHTML = "";
         let urlBase =
           dados.status_url ||
           window.location.origin + "/acompanhamento/" + dados.id;
-
         const linkFinal = urlBase.endsWith("/") ? urlBase : urlBase + "/";
 
         new QRCode(document.getElementById("qrcode-canvas"), {
-          text: linkFinal, // IMPORTANTE: usar a variável corrigida aqui
+          text: linkFinal,
           width: 100,
           height: 100,
-          correctLevel: QRCode.CorrectLevel.H, // Aumenta a tolerância a erros para impressão
+          correctLevel: QRCode.CorrectLevel.H,
         });
 
-        // 3. Imprimir
         setTimeout(() => {
           window.print();
           carrinho = {};

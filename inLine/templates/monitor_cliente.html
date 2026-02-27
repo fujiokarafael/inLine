@@ -39,14 +39,13 @@
       >
         <span class="w-3 h-3 bg-white rounded-full"></span> Retirar Agora
       </h2>
-      <div id="lista-prontos" class="flex flex-col gap-6"></div>
+      <div id="lista-prontos" class="grid grid-cols-2 gap-4"></div>
     </div>
   </div>
 </div>
 
 <script src="/static/js/monitor.js"></script>
 <script>
-  // Relógio simples para o monitor não parecer estático
   setInterval(() => {
     document.getElementById("relogio").innerText =
       new Date().toLocaleTimeString();
