@@ -266,7 +266,13 @@ class DashboardView(View):
             vendidos_hoje=Count('filaprato', filter=Q(filaprato__created_at__date=hoje)),
             
             # 2. Quantidade AGUARDANDO (Status PENDENTE)
-            aguardando=Count('filaprato', filter=Q(filaprato__status='PENDENTE')),
+            aguardando=Count(
+                'filaprato', 
+                filter=Q(
+                    filaprato__status='PENDENTE',
+                    filaprato__pedido__status='PENDENTE' # Se o pedido subiu para PRODUÇÃO, ele sai da contagem
+                )
+            ),
             
             # 3. Tempo Médio de Produção (TMA) específico deste prato
             tma_especifico=Avg(
