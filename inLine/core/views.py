@@ -299,18 +299,18 @@ class DashboardView(View):
 class MonitorPedidosView(TemplateView):
     template_name = "monitor_cliente.html"
 
+
 class MonitorPedidosAPIView(APIView):
     def get(self, request):
         try:
-            # Se o erro for 'updated_at', volte para 'created_at' temporariamente
+            # Usamos created_at se o updated_at ainda der erro de coluna não encontrada
             pedidos = Pedido.objects.filter(
                 status__in=[Pedido.Status.PENDENTE, Pedido.Status.PRODUCAO, Pedido.Status.FINALIZADO]
-            ).order_by('-created_at') # Teste com created_at primeiro
+            ).order_by('-created_at')
 
             data = {"pendentes": [], "preparando": [], "prontos": []}
 
             for p in pedidos:
-                # O split de UUID pode falhar se o ID for nulo ou formato estranho
                 senha = str(p.id).split('-')[0][:4].upper() if p.id else "0000"
                 item = {"senha": senha, "tipo": p.tipo}
                 
@@ -319,10 +319,23 @@ class MonitorPedidosAPIView(APIView):
                 elif p.status == Pedido.Status.PRODUCAO:
                     data["preparando"].append(item)
                 elif p.status == Pedido.Status.FINALIZADO:
+                    # CORREÇÃO AQUI: 
+                    # Certifique-se que o campo no modelo FilaPrato chama-se 'filas'
+                    itens_agrupados = p.filas.values('prato__nome').annotate(
+                        total=Count('id')
+                    )
+                    
+                    item["itens"] = [
+                        {
+                            "nome": i['prato__nome'],
+                            "quantidade": i['total']
+                        } for i in itens_agrupados
+                    ]
                     data["prontos"].append(item)
 
             return Response(data)
         except Exception as e:
-            # Isso vai imprimir o erro exato no terminal do Django
-            print(f"ERRO CRÍTICO NA API: {e}")
+            # ESSA LINHA É A MAIS IMPORTANTE AGORA:
+            # Verifique o log do seu terminal para ler o que aparecer aqui!
+            print(f"--- ERRO NA API DO MONITOR: {e} ---")
             return Response({"error": str(e)}, status=500)

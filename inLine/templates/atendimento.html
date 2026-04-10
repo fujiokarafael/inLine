@@ -1,7 +1,31 @@
 {% extends "base.html" %} {% load static %} {% block title %}InLine - Painel de
 Atendimento{% endblock %} {% block content %}
+
 <div
-  class="flex flex-col items-center justify-center p-6 md:p-10 font-sans min-h-screen bg-slate-50"
+  id="cupom-conferencia"
+  class="hidden print:block text-black p-2 font-mono text-[10px] w-[58mm]"
+>
+  <div class="text-center border-b border-black mb-2 pb-2">
+    <p class="text-[8px] uppercase font-bold">Confirmação de Entrega</p>
+    <h2 class="text-lg font-bold">PEDIDO COMPLETO</h2>
+    <h1 id="conf-senha" class="text-5xl font-black">----</h1>
+  </div>
+
+  <div class="my-4">
+    <p class="text-[8px] font-bold uppercase mb-1 underline">
+      Itens para Conferir:
+    </p>
+    <div id="conf-itens" class="leading-tight"></div>
+  </div>
+
+  <div class="border-t border-dashed border-black pt-2 text-center">
+    <p class="font-bold text-[10px]">✓ COZINHA FINALIZADA</p>
+    <p class="text-[8px] mt-1">Impresso em: {% now "H:i:s" %}</p>
+  </div>
+</div>
+
+<div
+  class="flex flex-col items-center justify-center p-6 md:p-10 font-sans min-h-screen bg-slate-50 no-print"
 >
   <div class="w-full max-w-2xl flex items-center justify-between mb-6 px-4">
     <a
@@ -48,7 +72,6 @@ Atendimento{% endblock %} {% block content %}
       <span class="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold"
         >Chamada Atual</span
       >
-
       <div
         id="senha-display"
         class="text-7xl md:text-9xl font-black text-blue-700 my-4 tabular-nums"
@@ -75,7 +98,6 @@ Atendimento{% endblock %} {% block content %}
         <span class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
         Fila de Espera (Pendentes)
       </h2>
-
       <div id="lista-pendentes" class="space-y-3">
         <p class="text-slate-500 italic text-sm">Carregando fila...</p>
       </div>
@@ -87,7 +109,6 @@ Atendimento{% endblock %} {% block content %}
       >
         Últimos Chamados
       </h2>
-
       <div
         id="ultimos-chamados"
         class="grid grid-cols-2 gap-3 opacity-80"
@@ -96,6 +117,73 @@ Atendimento{% endblock %} {% block content %}
   </div>
 </div>
 
+<style>
+  /* CSS PARA IMPRESSORA TÉRMICA 58mm */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    body {
+      background: white;
+    }
+    #cupom-conferencia {
+      display: block !important;
+      width: 58mm;
+    }
+    @page {
+      size: 58mm auto;
+      margin: 0;
+    }
+  }
+</style>
+
 {% block extra_js %}
 <script src="{% static 'js/atendimento.js' %}"></script>
+<script>
+  // LÓGICA DE AUTO-IMPRESSÃO
+  let pedidosProntosConhecidos = new Set();
+
+  async function monitorarPedidosParaImpressao() {
+    try {
+      const res = await fetch("/api/v1/monitor/pedidos/");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // data.prontos contém os pedidos que sua View marcou como FINALIZADO
+      data.prontos.forEach((pedido) => {
+        if (!pedidosProntosConhecidos.has(pedido.senha)) {
+          dispararImpressaoConferencia(pedido);
+          pedidosProntosConhecidos.add(pedido.senha);
+        }
+      });
+    } catch (e) {
+      console.error("Erro no monitor de impressão:", e);
+    }
+  }
+
+  function dispararImpressaoConferencia(pedido) {
+    // Preenche o cupom oculto
+    document.getElementById("conf-senha").innerText = pedido.senha;
+
+    // Se a sua API retornar a lista de itens, preenchemos aqui.
+    // Caso contrário, deixamos um aviso para conferência na tela.
+    const listaItens = document.getElementById("conf-itens");
+    if (pedido.itens_resumo) {
+      listaItens.innerHTML = pedido.itens_resumo
+        .map(
+          (item) =>
+            `<div class="flex justify-between">[ ] ${item.qtd}x ${item.nome}</div>`,
+        )
+        .join("");
+    } else {
+      listaItens.innerHTML = "<p>Verificar itens no painel digital.</p>";
+    }
+
+    // Comando de impressão silenciosa (se o Chrome estiver em modo Kiosk)
+    window.print();
+  }
+
+  // Inicia a verificação a cada 7 segundos
+  setInterval(monitorarPedidosParaImpressao, 7000);
+</script>
 {% endblock %} {% endblock %}

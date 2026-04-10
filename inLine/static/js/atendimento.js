@@ -1,12 +1,18 @@
 // atendimento.js
 
-// --- ESTA PARTE É VITAL: Executa assim que a página carrega ---
+// Mantém o registro de quais pedidos já foram impressos para não repetir
+let pedidosProntosConhecidos = new Set();
+
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Terminal de Atendimento iniciado...");
   carregarListaPendentes();
 
-  // Atualiza a fila automaticamente a cada 10 segundos
+  // 1. Atualiza a fila visual de espera a cada 10 segundos
   setInterval(carregarListaPendentes, 10000);
+
+  // 2. SOLUÇÃO 3: Vigia a API para imprimir quando a cozinha finalizar TUDO
+  // Verificação a cada 7 segundos para garantir agilidade na entrega
+  setInterval(monitorarPedidosParaImpressao, 7000);
 });
 
 async function carregarListaPendentes() {
@@ -15,15 +21,12 @@ async function carregarListaPendentes() {
 
   try {
     const res = await fetch("/api/v1/fila/proximo/");
-
-    // Se for 204 ou não estiver OK, limpamos a lista e saímos
     if (res.status === 204 || !res.ok) {
       listaDoc.innerHTML =
         '<p class="text-slate-500 italic text-sm">Nenhum pedido na fila.</p>';
       return;
     }
 
-    // Só tentamos ler o JSON se houver conteúdo
     const pendentes = await res.json();
     listaDoc.innerHTML = "";
 
@@ -34,7 +37,6 @@ async function carregarListaPendentes() {
     }
 
     pendentes.forEach((p) => {
-      // Extrai a senha dos 4 primeiros caracteres do UUID
       const senha = String(p.pedido_id).toUpperCase().slice(0, 4);
       const corBorda =
         p.tipo === "PREFERENCIAL" ? "border-red-500" : "border-amber-500";
@@ -49,13 +51,51 @@ async function carregarListaPendentes() {
         </div>`;
     });
   } catch (e) {
-    // Aqui capturamos o erro de SyntaxError: Unexpected end of JSON input
     console.error("Erro ao listar pendentes:", e);
+  }
+}
+
+// LÓGICA DE AUTO-IMPRESSÃO (SÓ QUANDO A COZINHA TERMINA TUDO)
+// atendimento.js
+
+let primeiraCargaRealizada = false; // TRAVA DE SEGURANÇA
+
+async function monitorarPedidosParaImpressao() {
+  try {
+    const res = await fetch("/api/v1/monitor/pedidos/");
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Se for a primeira vez que carregamos a página, apenas populamos o Set
+    // sem disparar a impressora.
+    if (!primeiraCargaRealizada) {
+      data.prontos.forEach((pedido) => {
+        pedidosProntosConhecidos.add(pedido.senha);
+      });
+      primeiraCargaRealizada = true;
+      console.log(
+        "Sistema de auto-impressão sincronizado. Aguardando novos pedidos...",
+      );
+      return; // Sai da função sem imprimir nada
+    }
+
+    // Nas cargas seguintes (após os primeiros 7 segundos), ele imprime o que for novo
+    data.prontos.forEach((pedido) => {
+      if (!pedidosProntosConhecidos.has(pedido.senha)) {
+        console.log(`💡 Novo pedido completo: #${pedido.senha}. Imprimindo...`);
+        dispararImpressaoFisica(pedido);
+        pedidosProntosConhecidos.add(pedido.senha);
+      }
+    });
+  } catch (e) {
+    console.error("Erro no monitor de auto-impressão:", e);
   }
 }
 
 async function chamarProximo() {
   const btn = document.getElementById("btn-chamar");
+  const display = document.getElementById("senha-display");
+
   btn.disabled = true;
 
   try {
@@ -72,13 +112,11 @@ async function chamarProximo() {
     } else if (res.ok) {
       const p = await res.json();
 
-      // 1. Atualiza o display visual com a senha vinda do servidor
-      document.getElementById("senha-display").innerText = p.senha;
+      // APENAS atualiza o visual do painel de chamada (Digital)
+      display.innerText = p.senha;
+      display.classList.add("animate-bounce"); // Pequeno efeito visual ao chamar
+      setTimeout(() => display.classList.remove("animate-bounce"), 1000);
 
-      // 2. Dispara a lógica de impressão (usando o JSON completo)
-      imprimirCupomAtendente(p);
-
-      // 3. Atualiza a lista lateral
       carregarListaPendentes();
     }
   } catch (e) {
@@ -88,33 +126,32 @@ async function chamarProximo() {
   }
 }
 
-function imprimirCupomAtendente(p) {
-  // Monta o texto para a impressora ou console
-  const itensTexto = p.itens
-    .map((i) => `${i.quantidade}x ${i.nome}`)
-    .join("\n");
+function dispararImpressaoFisica(p) {
+  const confSenha = document.getElementById("conf-senha");
+  const confItens = document.getElementById("conf-itens");
 
-  const cupom = `
-============================
-   ENTREGA DE PRODUTOS
-============================
-SENHA: ${p.senha}
-TIPO:  ${p.tipo}
-HORA:  ${p.hora_impressao}
-----------------------------
-ITENS DO PEDIDO:
-${itensTexto}
-----------------------------
-TOTAL DE ITENS: ${p.total_itens}
-============================
-  `;
+  if (confSenha && confItens) {
+    confSenha.innerText = p.senha;
 
-  console.log(cupom);
-  // Se quiser abrir a caixa de impressão do navegador:
-  // prepararJanelaImpressao(cupom);
+    // Gerar lista de checklist para conferência
+    const itensHTML = p.itens
+      ? p.itens
+          .map(
+            (i) =>
+              `<div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding: 4px 0;">
+        <span>[ ] ${i.quantidade}x ${i.nome}</span>
+      </div>`,
+          )
+          .join("")
+      : "Conferir itens no sistema";
+
+    confItens.innerHTML = itensHTML;
+
+    // Dispara a impressão silenciosa
+    window.print();
+  }
 }
 
-// Função auxiliar para o Token de Segurança do Django
 function getCookie(name) {
   let cookieValue = null;
   if (document.cookie && document.cookie !== "") {
