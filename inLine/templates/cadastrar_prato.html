@@ -25,34 +25,20 @@
         required
       />
     </div>
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700"
-          >Preço (R$)</label
-        >
-        <input
-          type="number"
-          step="0.01"
-          id="preco"
-          class="w-full p-3 border rounded-lg"
-          required
-        />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700"
-          >Tempo Prep. (Seg)</label
-        >
-        <input
-          type="number"
-          id="tempo"
-          class="w-full p-3 border rounded-lg"
-          value="300"
-          required
-        />
-      </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Preço (R$)</label>
+      <input
+        type="number"
+        step="0.01"
+        id="preco"
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+        placeholder="0.00"
+        required
+      />
     </div>
 
-    <div class="flex flex-col gap-3 pt-4">
+    <div class="flex flex-col gap-3 pt-6">
       <button
         type="submit"
         class="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-100"
@@ -75,10 +61,12 @@
     .getElementById("form-prato")
     .addEventListener("submit", async (e) => {
       e.preventDefault();
+
       const payload = {
         nome: document.getElementById("nome").value,
         preco: document.getElementById("preco").value,
-        tempo_preparo_seg: document.getElementById("tempo").value,
+        // Enviando valor padrão fixo para não dar erro no banco
+        tempo_preparo_seg: 300,
       };
 
       try {
@@ -89,7 +77,6 @@
         });
 
         if (res.ok) {
-          // Em vez de apenas resetar, redirecionamos para o caixa
           alert("Prato cadastrado com sucesso! Redirecionando...");
           window.location.href = "{% url 'gui-caixa' %}";
         } else {

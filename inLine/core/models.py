@@ -39,7 +39,6 @@ class Prato(models.Model):
     nome = models.CharField(max_length=100)
     preco = models.DecimalField(max_digits=10, decimal_places=2)
     ativo = models.BooleanField(default=True, db_index=True)
-    tempo_preparo_seg = models.IntegerField(default=300)
 
     class Meta:
         indexes = [
@@ -61,7 +60,7 @@ class FilaPrato(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="filas")
-    prato = models.ForeignKey(Prato, on_delete=models.PROTECT, null=True)
+    prato = models.ForeignKey(Prato, on_delete=models.PROTECT, null=True, related_name="filas")
     preco_unitario = models.DecimalField(max_digits=8, decimal_places=2)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
     started_at = models.DateTimeField(null=True, blank=True, db_index=True )
@@ -69,6 +68,7 @@ class FilaPrato(models.Model):
     usado_em_metrica = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [

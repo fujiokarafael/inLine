@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import transaction, models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from uuid import UUID
 from .models import Pedido, FilaPrato, TMA, Prato
@@ -65,45 +66,63 @@ def create_order(tipo, itens):
 
         return pedido
 
+# core/views.py ou services.py
+
+# =========================
+# INICIAR PRATO
+# =========================
+
+def iniciar_producao_item(fila_id):
+    item = FilaPrato.objects.get(id=fila_id)
+    if not item.started_at:
+        item.started_at = timezone.now()  # Registra o início REAL
+        item.status = FilaPrato.Status.EM_PRODUCAO
+        item.save(update_fields=['started_at', 'status'])
+    return item
 
 # =========================
 # FINALIZAÇÃO DE PRATO
 # =========================
 
+
+
 def finalize_prato(fila_id):
     try:
         with transaction.atomic():
-            # 1. Busca o item específico (select_for_update evita duplicidade)
+            # 1. Busca o item com lock para evitar concorrência
             item = FilaPrato.objects.select_for_update().filter(id=fila_id).first()
 
             if not item or item.status == FilaPrato.Status.FINALIZADO:
                 return None
 
-            # 2. Atualiza o status do item
+            agora = timezone.now()
+
+            # 2. GRAVAÇÃO DOS TEMPOS (O CORAÇÃO DO TMA)
+            # Se o item não tiver hora de início (pulou a etapa 'em produção'), 
+            # assumimos que começou agora para não quebrar o cálculo.
+            if not item.started_at:
+                item.started_at = item.created_at
+
+            item.finished_at = agora  # Define o fim da produção AGORA
             item.status = FilaPrato.Status.FINALIZADO
-            item.save(update_fields=['status'])
             
-            # 3. VERIFICAÇÃO CRÍTICA: O Pedido Pai
+            # 3. SALVAMENTO EXPLÍCITO
+            # Adicionamos os campos de tempo no update_fields
+            item.save(update_fields=['status', 'finished_at', 'started_at', 'updated_at'])
+
+            # 4. Atualização do Pedido (se todos os itens do pedido acabaram)
             pedido = item.pedido
-            
-            # Buscamos se existe QUALQUER prato desse pedido que ainda esteja 
-            # PENDENTE ou EM_PRODUCAO.
-            # Se .exists() for False, significa que todos estão FINALIZADOS.
-            tem_itens_em_aberto = FilaPrato.objects.filter(
-                pedido=pedido
-            ).exclude(
+            itens_abertos = FilaPrato.objects.filter(pedido=pedido).exclude(
                 status__in=[FilaPrato.Status.FINALIZADO, FilaPrato.Status.RETIRADO]
             ).exists()
 
-            if not tem_itens_em_aberto:
+            if not itens_abertos:
                 pedido.status = Pedido.Status.FINALIZADO
                 pedido.save(update_fields=['status'])
-                # Log de debug interno (opcional)
-                print(f"DEBUG: Pedido {pedido.id} movido para FINALIZADO")
             
             return item
     except Exception as e:
-        print(f"ERRO NO SERVICE: {e}")
+        print(f"Erro no service finalize_prato: {e}")
         raise e
 
 
@@ -113,66 +132,93 @@ def finalize_prato(fila_id):
 
 def calculate_tma_per_prato():
     """
-    Calcula o TMA segmentado por prato (Janela de 10 unidades).
-    Processa apenas itens com status RETIRADO que ainda não foram contabilizados.
+    Calcula o TMA focado na performance recente (Janela de até 10 unidades).
+    Se houver < 10, calcula com o que houver. Se > 10, pega o lote mais recente.
     """
-    # 1. Identifica quais pratos têm pelo menos 10 itens aguardando cálculo
-    # Usamos um subquery ou agregação simples para performance
-    pratos_ids = FilaPrato.objects.filter(
-        status=FilaPrato.Status.RETIRADO,
-        usado_em_metrica=False
-    ).values('prato').annotate(
-        total=models.Count('id')
-    ).filter(total__gte=10).values_list('prato', flat=True)
+    # 1. Identifica pratos que possuem itens finalizados aguardando cálculo
+    pratos_pendentes = FilaPrato.objects.filter(
+        status=FilaPrato.Status.FINALIZADO, 
+        usado_em_metrica=False,
+        started_at__isnull=False,
+        finished_at__isnull=False
+    ).values('prato').annotate(total=models.Count('id'))
 
-    resultados = []
-
-    for prato_id in pratos_ids:
+    for p in pratos_pendentes:
+        prato_id = p['prato']
         try:
             with transaction.atomic():
-                # 2. Busca exatamente 10 e trava para escrita (select_for_update)
-                # O SQLite (modo WAL) lidará com o lock por linha
+                # 2. Busca o lote (até 10 itens) - selecionamos para update para evitar concorrência
                 itens = list(
                     FilaPrato.objects.filter(
                         prato_id=prato_id,
-                        status=FilaPrato.Status.RETIRADO,
+                        status=FilaPrato.Status.FINALIZADO,
                         usado_em_metrica=False
                     )
                     .select_for_update()
-                    .order_by("finished_at")[:10]
+                    .order_by('finished_at')[:10]
                 )
 
-                # Validação de segurança (caso outro processo tenha pego)
-                if len(itens) < 10:
+                qtd = len(itens)
+                if qtd == 0:
                     continue
 
-                # 3. Cálculo: Tempo entre o 10º finalizado e o 1º iniciado do lote
-                t_inicial = itens[0].started_at
-                t_final = itens[-1].finished_at
+                # 3. Cálculo da média do lote atual
+                # Soma a diferença de tempo de cada item individualmente (preparo real)
+                soma_segundos = sum([
+                    max(0.0, (i.finished_at - i.started_at).total_seconds()) 
+                    for i in itens
+                ])
                 
-                if t_inicial and t_final:
-                    diff_segundos = max(0.0, (t_final - t_inicial).total_seconds())
-                    media = diff_segundos / 10
+                media = soma_segundos / qtd
 
-                    # 4. Persistência vinculada ao Prato específico
-                    TMA.objects.create(
-                        prato_id=prato_id,
-                        valor_tma_seg=media,
-                        ultimo_prato_id=itens[-1].id
-                    )
+                # 4. Grava a nova métrica na tabela TMA
+                TMA.objects.create(
+                    prato_id=prato_id,
+                    valor_tma_seg=media,
+                    ultimo_prato_id=itens[-1].id # Referência para auditoria
+                )
 
-                    # 5. Marca os 10 itens como "usados" para não repetir no próximo cálculo
-                    FilaPrato.objects.filter(
-                        id__in=[i.id for i in itens]
-                    ).update(usado_em_metrica=True)
-
-                    resultados.append({
-                        "prato_id": prato_id, 
-                        "media_seg": media
-                    })
+                # 5. Marca esses itens como processados
+                FilaPrato.objects.filter(
+                    id__in=[i.id for i in itens]
+                ).update(usado_em_metrica=True)
 
         except Exception as e:
             print(f"Erro ao calcular TMA para prato {prato_id}: {e}")
-            continue
 
-    return resultados
+# =========================
+# RETIRADA DE PEDIDO (janela fixa)
+# =========================
+
+def registrar_retirada_total_pedido(pedido_id):
+    try:
+        with transaction.atomic():
+            # 1. Busca o pedido e trava a linha no banco
+            pedido = Pedido.objects.select_for_update().get(id=pedido_id)
+            
+            # 2. Conta quantos itens o pedido tem no total
+            total_itens = pedido.filas.count()
+            
+            # 3. Conta quantos desses itens já estão FINALIZADOS
+            total_finalizados = pedido.filas.filter(status=Pedido.Status.FINALIZADO).count()
+
+            # REGRA DE OURO: Só passa se o total for igual ao finalizado
+            if total_itens != total_finalizados:
+                raise ValidationError(
+                    f"Impossível retirar: O pedido tem {total_itens} itens, mas apenas {total_finalizados} estão prontos."
+                )
+
+            # 4. Se chegou aqui, todos estão prontos. Então damos baixa em tudo:
+            pedido.filas.all().update(
+                status=Pedido.Status.RETIRADO, 
+                delivered_at=timezone.now()
+            )
+            
+            # 5. Atualiza o status do Pedido pai
+            pedido.status = Pedido.Status.RETIRADO
+            pedido.save(update_fields=['status'])
+            
+            return pedido
+            
+    except Pedido.DoesNotExist:
+        return None

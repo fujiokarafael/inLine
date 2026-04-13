@@ -5,6 +5,7 @@ from .views import (
     NextOrderAPIView, PainelCozinhaPratoView, 
     FinalizarPratoView,CreatePratoAPIView, TMADashboardAPIView,
     AcompanhamentoPedidoView,DashboardView, MonitorPedidosView, MonitorPedidosAPIView,
+    RetirarPedidoView,BaixaEntregaView,
 )
 
 urlpatterns = [
@@ -15,7 +16,9 @@ urlpatterns = [
     path('cadastrar-prato/', TemplateView.as_view(template_name="cadastrar_prato.html"), name='gui-cadastrar'),
     path('', DashboardView.as_view(), name='dashboard-central'), # Home do sistema,
     path('acompanhamento/<str:pedido_id>/', AcompanhamentoPedidoView.as_view(), name='acompanhamento_pedido'),
-    path('monitor/', MonitorPedidosView.as_view(), name='monitor-cliente'),   
+    path('monitor/', MonitorPedidosView.as_view(), name='monitor-cliente'),
+    path('atendimento/baixa-entrega/', BaixaEntregaView.as_view(), name='gui-baixa-entrega'),
+    
 
     # API - O JavaScript deve usar esse prefixo
     path('api/v1/pratos/', ListPratosAPIView.as_view()),
@@ -26,5 +29,6 @@ urlpatterns = [
     path('api/v1/fila/finalizar/<uuid:id>/', FinalizarPratoView.as_view(), name='finalizar-prato'),
     path('api/v1/metrica/tma-dashboard/', TMADashboardAPIView.as_view(), name='tma'),
     path('api/v1/monitor/pedidos/', MonitorPedidosAPIView.as_view(), name='api-monitor-pedidos'),
+    path('api/v1/pedidos/retirar/<uuid:pedido_id>/', RetirarPedidoView.as_view(), name='retirar-pedido'),   
      
 ]

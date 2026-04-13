@@ -1,0 +1,133 @@
+{% extends "base.html" %} {% block content %}
+<div class="p-6 bg-slate-50 min-h-screen">
+  <div class="flex justify-between items-center mb-8">
+    <div>
+      <h1 class="text-2xl font-black text-slate-800 italic">
+        BALCÃO DE ENTREGA
+      </h1>
+      <p class="text-slate-500 font-medium">
+        Itens prontos aguardando retirada
+      </p>
+    </div>
+    <div
+      class="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full font-bold animate-pulse"
+    >
+      ● Operação em Tempo Real
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for pedido in pedidos_prontos %}
+    <div
+      class="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden flex flex-col"
+    >
+      <div
+        class="p-5 bg-slate-800 text-white flex justify-between items-center"
+      >
+        <div>
+          <span class="text-xs font-bold uppercase opacity-70"
+            >Pedido #{{ pedido.id }}</span
+          >
+          <h2 class="text-xl font-black">{{ pedido.nome_cliente|upper }}</h2>
+        </div>
+        <div class="bg-emerald-500 text-white px-3 py-1 rounded-lg font-black">
+          PRONTO
+        </div>
+      </div>
+
+      <div class="p-5 flex-1">
+        <ul class="space-y-3">
+          {% for item in pedido.filas.all %} {% if item.status == 'FINALIZADO'
+          %}
+          <li
+            class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100"
+          >
+            <span class="font-bold text-slate-700">{{ item.prato.nome }}</span>
+            <span class="text-xs font-medium text-slate-400"
+              >Desde: {{ item.finished_at|date:"H:i" }}</span
+            >
+          </li>
+          {% endif %} {% endfor %}
+        </ul>
+      </div>
+
+      <div class="p-5 bg-slate-50 border-t border-slate-100">
+        <button
+          onclick="entregarPedido('{{ pedido.id }}')"
+          class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2"
+        >
+          <span class="text-lg">ENTREGAR PEDIDO COMPLETO</span>
+          <svg
+            class="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="3"
+              d="M5 13l4 4L19 7"
+            ></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    {% empty %}
+    <div
+      class="col-span-full flex flex-col items-center justify-center py-20 text-slate-400"
+    >
+      <div class="text-6xl mb-4">🙌</div>
+      <p class="text-xl font-bold">
+        Nenhum pedido aguardando retirada no momento.
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  async function entregarPedido(pedidoId) {
+    // Ajuste da URL para bater com o urlpatterns: api/v1/pedidos/retirar/<uuid>/
+    const url = `/api/v1/pedidos/retirar/${pedidoId}/`;
+
+    if (
+      !confirm("Confirmar a entrega da bandeja completa para este cliente?")
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": "{{ csrf_token }}",
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        // Feedback visual rápido antes de recarregar (opcional)
+        console.log(`Pedido ${pedidoId} entregue.`);
+        location.reload();
+      } else {
+        const errorData = await response.json();
+        alert(
+          "Erro: " +
+            (errorData.detail || "Não foi possível processar a retirada."),
+        );
+      }
+    } catch (error) {
+      console.error("Erro na comunicação com a API:", error);
+      alert("Erro de conexão. Verifique se o servidor está rodando.");
+    }
+  }
+
+  // Refresh automático: 15 segundos é um tempo excelente para o balcão
+  setInterval(() => {
+    if (!document.hidden) {
+      location.reload();
+    }
+  }, 15000);
+</script>
+{% endblock %}

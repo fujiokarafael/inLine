@@ -1,6 +1,7 @@
 
 from django.db.models import Count, Avg, F, ExpressionWrapper, fields, Q
 from django.shortcuts import render, get_object_or_404
+from django.core.exceptions import ValidationError
 from django.views import View
 from django.views.generic import TemplateView
 from django.db import transaction, models
@@ -11,6 +12,8 @@ from django.utils import timezone
 from .services import (
     create_order,
     finalize_prato,
+     calculate_tma_per_prato,
+     registrar_retirada_total_pedido,
 )
 from .models import Pedido, FilaPrato, Prato, TMA
 
@@ -18,8 +21,6 @@ class CreatePratoAPIView(APIView):
     def post(self, request):
         nome = request.data.get("nome")
         preco = request.data.get("preco")
-        # O front pode enviar como 'tempo_preparo_seg' ou 'tempo'
-        tempo = request.data.get("tempo_preparo_seg") or request.data.get("tempo")
 
         if not nome or not preco:
             return Response({"error": "Nome e preço são obrigatórios"}, status=400)
@@ -28,7 +29,6 @@ class CreatePratoAPIView(APIView):
             prato = Prato.objects.create(
                 nome=nome,
                 preco=preco,
-                tempo_preparo_seg=int(tempo) if tempo else 300,
                 ativo=True
             )
             return Response({"id": str(prato.id), "status": "salvo"}, status=201)
@@ -189,25 +189,39 @@ class PainelCozinhaPratoView(APIView):
 # FINALIZAR ITEM DE PRODUÇÃO
 # =========================
 
+# core/views.py
+
+
 class FinalizarPratoView(APIView):
-    def post(self, request, id): # O nome aqui deve bater com o <uuid:fila_id> do urls.py
+    def post(self, request, id): 
         try:
+            # 1. Executa a lógica de finalização do prato/pedido
             fila = finalize_prato(id) 
             
             if not fila:
-                # Se o item não for achado ou já estiver finalizado
                 return Response(
                     {"detail": "Item não encontrado ou já processado."}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
 
+            # 2. GATILHO DE MÉTRICAS (Solução do Dashboard)
+            # Sempre que finalizamos um item, tentamos processar o TMA pendente.
+            # A função interna já possui a trava de "mínimo 10 itens", 
+            # então ela não pesará no banco se não houver dados suficientes.
+            try:
+                calculate_tma_per_prato()
+            except Exception as tma_err:
+                # Logamos o erro de métrica mas não travamos a resposta do usuário
+                print(f"Aviso: Falha ao calcular TMA: {tma_err}")
+
             return Response({
                 "status": "Finalizado", 
-                "fila_id": str(id)
+                "fila_id": str(id),
+                "mensagem": "Métricas atualizadas com sucesso"
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
-            # Retorna o erro real para o log do Django ajudar no debug
+            print(f"ERRO CRÍTICO NO FINALIZAR: {e}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     
@@ -228,20 +242,23 @@ class TMADashboardAPIView(APIView):
         data = []
 
         for prato in pratos:
-            # Pega o TMA mais recente deste prato
+            # Pega a métrica mais recente calculada pelo service
             ultima_metrica = TMA.objects.filter(prato=prato).order_by('-calculado_em').first()
             
-            # Se não houver TMA (menos de 10 vendas), usa o tempo padrão do cadastro
-            tempo_valor = ultima_metrica.valor_tma_seg if ultima_metrica else prato.tempo_preparo_seg
-            
+            # Cálculo seguro: se não houver métrica, tma_minutos é 0
+            if ultima_metrica and ultima_metrica.valor_tma_seg:
+                tma_minutos = round(float(ultima_metrica.valor_tma_seg) / 60, 1)
+            else:
+                tma_minutos = 0.0
+
             data.append({
                 "prato_nome": prato.nome,
-                "tma_minutos": round(tempo_valor / 60, 1),
+                "tma_minutos": tma_minutos,
                 "tem_metrica": ultima_metrica is not None
             })
 
         return Response(data, status=200)
-
+    
 # acompanhar pedido   
 class AcompanhamentoPedidoView(View):
     def get(self, request, pedido_id):
@@ -255,46 +272,41 @@ class AcompanhamentoPedidoView(View):
 class DashboardView(View):
     def get(self, request):
         hoje = timezone.now().date()
-        
-        # Total geral para cálculos de ranking
         total_geral = FilaPrato.objects.filter(created_at__date=hoje).count()
 
-        # MÉTRICA POR PRATO: 
-        # Buscamos todos os pratos e trazemos as contagens e médias específicas
+        # Busca pratos e anota as contagens básicas
         metricas_pratos = Prato.objects.annotate(
-            # 1. Quantidade vendida hoje
-            vendidos_hoje=Count('filaprato', filter=Q(filaprato__created_at__date=hoje)),
-            
-            # 2. Quantidade AGUARDANDO (Status PENDENTE)
-            aguardando=Count(
-                'filaprato', 
-                filter=Q(
-                    filaprato__status='PENDENTE',
-                    filaprato__pedido__status='PENDENTE' # Se o pedido subiu para PRODUÇÃO, ele sai da contagem
-                )
-            ),
-            
-            # 3. Tempo Médio de Produção (TMA) específico deste prato
-            tma_especifico=Avg(
-                ExpressionWrapper(
-                    F('filaprato__updated_at') - F('filaprato__created_at'),
-                    output_field=fields.DurationField()
-                ),
-                filter=Q(filaprato__status='FINALIZADO', filaprato__updated_at__date=hoje)
-            )
+            vendidos_hoje=Count('filas', filter=Q(filas__created_at__date=hoje)),
+            aguardando=Count('filas', filter=Q(filas__status='PENDENTE', filas__pedido__status='PENDENTE'))
         ).order_by('-vendidos_hoje')
 
-        # Tratamento do TMA para minutos (Python side)
         for p in metricas_pratos:
-            if p.tma_especifico:
-                p.tma_minutos = round(p.tma_especifico.total_seconds() / 60, 1)
+            # TENTA BUSCAR NA TABELA TMA (Métrica processada)
+            ultima_m = TMA.objects.filter(prato_id=p.id).order_by('-calculado_em').first()
+            
+            if ultima_m and ultima_m.valor_tma_seg:
+                p.tma_minutos = round(float(ultima_m.valor_tma_seg) / 60, 1)
             else:
-                p.tma_minutos = 0
+                # FALLBACK: Se o banco TMA está vazio, calcula a média real dos itens de HOJE
+                media_hoje = FilaPrato.objects.filter(
+                    prato_id=p.id, 
+                    status='FINALIZADO', 
+                    finished_at__date=hoje,
+                    started_at__isnull=False
+                ).aggregate(
+                    media=Avg(ExpressionWrapper(F('finished_at') - F('started_at'), output_field=fields.DurationField()))
+                )['media']
+                
+                if media_hoje:
+                    p.tma_minutos = round(media_hoje.total_seconds() / 60, 1)
+                else:
+                    p.tma_minutos = 0.0
 
         return render(request, 'dashboard.html', {
-            'metricas_pratos': metricas_pratos,
-            'total_geral': total_geral,
+            'metricas_pratos': metricas_pratos, 
+            'total_geral': total_geral
         })
+    
 
 class MonitorPedidosView(TemplateView):
     template_name = "monitor_cliente.html"
@@ -339,3 +351,38 @@ class MonitorPedidosAPIView(APIView):
             # Verifique o log do seu terminal para ler o que aparecer aqui!
             print(f"--- ERRO NA API DO MONITOR: {e} ---")
             return Response({"error": str(e)}, status=500)
+
+class RetirarPedidoView(APIView):
+    def post(self, request, pedido_id):
+        try:
+            pedido = registrar_retirada_total_pedido(pedido_id)
+            
+            if not pedido:
+                return Response({"detail": "Pedido não encontrado."}, status=404)
+
+            return Response({"status": "sucesso"}, status=200)
+
+        except ValidationError as e:
+            # Retorna 400 (Bad Request) com a mensagem explicativa
+            return Response({"detail": list(e.messages)}, status=400)
+            
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+                
+class BaixaEntregaView(View):
+    def get(self, request):
+        # 1. Pegamos os pedidos que não foram retirados ainda
+        # 2. Contamos o total de itens (total_itens)
+        # 3. Contamos apenas os itens que estão FINALIZADOS (total_prontos)
+        pedidos_completos = Pedido.objects.annotate(
+            total_itens=Count('filas'),
+            total_prontos=Count('filas', filter=Q(filas__status=Pedido.Status.FINALIZADO))
+        ).filter(
+            status=Pedido.Status.FINALIZADO, # O status do pedido pai
+            total_itens=models.F('total_prontos'), # Regra: Total == Prontos
+            total_itens__gt=0 # Garante que não pegamos pedidos vazios
+        ).prefetch_related('filas', 'filas__prato').order_by('created_at')
+
+        return render(request, 'baixa_entrega.html', {
+            'pedidos_prontos': pedidos_completos
+        })

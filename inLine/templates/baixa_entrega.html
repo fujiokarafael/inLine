@@ -1,0 +1,172 @@
+{% extends "base.html" %} {% block content %}
+<div class="p-8 bg-slate-50 min-h-screen">
+  <div class="flex justify-between items-center mb-10">
+    <div class="flex items-center gap-6">
+      <a
+        href="{% url 'dashboard-central' %}"
+        class="bg-white text-slate-400 p-4 rounded-2xl hover:text-blue-600 shadow-sm border border-slate-200 transition-all flex items-center justify-center group"
+        title="Voltar ao Painel de Controle"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+          />
+        </svg>
+      </a>
+
+      <div>
+        <h1
+          class="text-3xl font-black text-slate-800 tracking-tighter italic uppercase"
+        >
+          Controle de Saída
+        </h1>
+        <p class="text-slate-500 font-medium font-mono text-sm">
+          Aguardando entrega ao cliente
+        </p>
+      </div>
+    </div>
+
+    <div class="text-right">
+      <span
+        class="block text-[10px] font-black text-slate-400 uppercase tracking-widest"
+        >Total no Balcão</span
+      >
+      <span class="text-3xl font-black text-blue-600"
+        >{{ pedidos_prontos|length }}</span
+      >
+    </div>
+  </div>
+
+  <div
+    class="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden"
+  >
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-slate-50/50">
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400"
+            >
+              Senha
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400"
+            >
+              Itens da Bandeja
+            </th>
+            <th
+              class="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center"
+            >
+              Ação
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          {% for pedido in pedidos_prontos %}
+          <tr
+            id="row-{{ pedido.id }}"
+            class="hover:bg-slate-50/50 transition-colors"
+          >
+            <td class="p-6">
+              <span class="text-slate-800 font-black text-4xl tracking-tighter">
+                #{{ pedido.id|stringformat:".4s"|upper }}
+              </span>
+            </td>
+
+            <td class="p-6">
+              <div class="flex flex-wrap gap-2">
+                {% for item in pedido.filas.all %}
+                <span
+                  class="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold border border-emerald-100"
+                >
+                  {{ item.prato.nome }}
+                </span>
+                {% endfor %}
+              </div>
+            </td>
+
+            <td class="p-6 text-center">
+              <button
+                onclick="confirmarEntrega('{{ pedido.id }}')"
+                class="bg-amber-400 text-amber-950 px-6 py-3 rounded-2xl font-black text-xs shadow-lg shadow-amber-100 hover:bg-amber-500 transition-all flex items-center gap-2 mx-auto active:scale-95"
+              >
+                <span>CONCLUIR</span>
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="3"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="3" class="p-20 text-center">
+              <div class="text-4xl mb-2">🥂</div>
+              <p
+                class="text-slate-400 font-bold uppercase text-xs tracking-widest"
+              >
+                Tudo entregue. Balcão limpo!
+              </p>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function confirmarEntrega(pedidoId) {
+    const url = `/api/v1/pedidos/retirar/${pedidoId}/`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": "{{ csrf_token }}",
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const row = document.getElementById(`row-${pedidoId}`);
+        if (row) {
+          row.style.opacity = "0";
+          row.style.transform = "translateX(20px)";
+        }
+        setTimeout(() => location.reload(), 300);
+      } else {
+        const errorData = await response.json();
+        alert(
+          "Erro: " +
+            (errorData.detail || "Não foi possível processar a baixa."),
+        );
+      }
+    } catch (error) {
+      console.error("Erro na comunicação:", error);
+    }
+  }
+
+  setInterval(() => {
+    if (!document.hidden) location.reload();
+  }, 15000);
+</script>
+{% endblock %}
