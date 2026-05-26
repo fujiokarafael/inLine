@@ -66,27 +66,27 @@
       container.innerHTML = dados
         .map(
           (item) => `
-            <!-- Card alterado para fundo branco, borda leve e sombra suave -->
-            <div class="bg-white border-l-4 ${item.total_produzir > 5 ? "border-red-600" : "border-amber-500"} border-y border-r border-slate-100 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
-                <h2 class="text-2xl font-black uppercase truncate text-slate-800 mb-4">${item.prato__nome}</h2>
-                
-                <div class="flex justify-between items-end">
-                    <div class="flex flex-col">
-                        <span class="text-slate-400 text-xs font-bold uppercase tracking-widest">A Produzir</span>
-                        <span class="text-7xl font-black leading-none ${item.total_produzir > 0 ? "text-amber-500" : "text-slate-200"}">
-                            ${item.total_produzir}
-                        </span>
-                    </div>
-                    
-                    <div class="flex flex-col items-end">
-                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Estoque</span>
-                        <span class="text-4xl font-black ${item.prato__estoque < 10 ? "text-red-500" : "text-slate-300"}">
-                            ${item.prato__estoque}
-                        </span>
-                    </div>
-                </div>
+    <div class="bg-white border border-slate-100 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+        <h2 class="text-2xl font-black uppercase truncate text-slate-800 mb-6">${item.prato__nome}</h2>
+        
+        <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="flex flex-col">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Em Espera</span>
+                <span class="text-5xl font-black text-slate-600">${item.espera}</span>
             </div>
-        `,
+            <div class="flex flex-col border-l border-r border-slate-100">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Em produção</span>
+                <span class="text-5xl font-black text-amber-500">${item.producao}</span>
+            </div>
+            <div class="flex flex-col">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Estoque</span>
+                <span class="text-5xl font-black ${item.prato__estoque < 5 ? "text-red-500" : "text-blue-500"}">
+                    ${item.prato__estoque}
+                </span>
+            </div>
+        </div>
+    </div>
+`,
         )
         .join("");
     } catch (e) {

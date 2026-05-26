@@ -1,6 +1,5 @@
 {% extends "base.html" %} {% block content %}
 <div class="min-h-screen bg-slate-900 text-white flex flex-col p-8">
-  <!-- Cabeçalho -->
   <div class="border-b-4 border-amber-500 pb-6 mb-12">
     <h1
       class="text-6xl font-black uppercase italic tracking-tighter text-center"
@@ -9,42 +8,50 @@
     </h1>
   </div>
 
-  <!-- Container de Quantitativos -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-12 flex-1">
-    <!-- Bloco: Em Produção -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8 flex-1">
     <div
-      class="bg-slate-800 rounded-[3rem] p-12 flex flex-col items-center justify-center border-b-8 border-amber-500 shadow-2xl"
+      class="bg-slate-800 rounded-[3rem] p-8 flex flex-col items-center justify-center border-b-8 border-slate-300 shadow-2xl"
     >
       <h2
-        class="text-3xl font-bold uppercase tracking-widest text-slate-400 mb-4"
+        class="text-3xl font-bold uppercase tracking-widest text-slate-400 mb-4 text-center"
+      >
+        Aguardando
+      </h2>
+      <div class="text-[10rem] font-black leading-none text-slate-200">
+        {{ qtd_pendente|default:"0" }}
+      </div>
+      <p class="text-xl text-slate-500 mt-4 uppercase font-black">Na Fila</p>
+    </div>
+
+    <div
+      class="bg-slate-800 rounded-[3rem] p-8 flex flex-col items-center justify-center border-b-8 border-amber-500 shadow-2xl"
+    >
+      <h2
+        class="text-3xl font-bold uppercase tracking-widest text-slate-400 mb-4 text-center"
       >
         Em Produção
       </h2>
-      <div class="text-[12rem] font-black leading-none text-amber-500">
-        {{ qtd_producao }}
+      <div class="text-[10rem] font-black leading-none text-amber-500">
+        {{ qtd_producao|default:"0" }}
       </div>
-      <p class="text-xl text-slate-500 mt-4 uppercase font-black">
-        Unidades na Fila
-      </p>
+      <p class="text-xl text-slate-500 mt-4 uppercase font-black">Na Chapa</p>
     </div>
 
-    <!-- Bloco: Em Estoque -->
     <div
-      class="bg-slate-800 rounded-[3rem] p-12 flex flex-col items-center justify-center border-b-8 border-blue-500 shadow-2xl"
+      class="bg-slate-800 rounded-[3rem] p-8 flex flex-col items-center justify-center border-b-8 border-blue-500 shadow-2xl"
     >
       <h2
-        class="text-3xl font-bold uppercase tracking-widest text-slate-400 mb-4"
+        class="text-3xl font-bold uppercase tracking-widest text-slate-400 mb-4 text-center"
       >
         Disponível
       </h2>
-      <div class="text-[12rem] font-black leading-none text-blue-500">
-        {{ qtd_estoque }}
+      <div class="text-[10rem] font-black leading-none text-blue-500">
+        {{ qtd_estoque|default:"0" }}
       </div>
       <p class="text-xl text-slate-500 mt-4 uppercase font-black">Em Estoque</p>
     </div>
   </div>
 
-  <!-- Rodapé Informativo -->
   <div class="mt-12 text-center">
     <p
       class="text-slate-600 font-bold uppercase tracking-[0.5em] text-sm animate-pulse"

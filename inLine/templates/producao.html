@@ -1,11 +1,13 @@
 {% extends "base.html" %} {% load static %} {% block content %}
-<div class="bg-slate-50 min-h-screen flex flex-col p-4 overflow-hidden">
+<div
+  class="bg-slate-50 min-h-screen flex flex-col p-4 overflow-hidden relative"
+>
   <header class="flex justify-between items-center mb-6 px-4">
     <div class="flex items-center gap-5">
       <a
         href="{% url 'dashboard-central' %}"
         class="bg-white text-slate-500 p-2.5 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm border border-slate-200 flex items-center justify-center"
-        title="Voltar ao Painel de Controle"
+        title="Voltar ao Painel"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -39,9 +41,16 @@
 
     <div
       id="status-conexao"
-      class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"
+      class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-4"
     >
-      Sistema Online
+      <button
+        onclick="toggleModoEdicao()"
+        id="btn-modo-edicao"
+        class="bg-white border border-slate-200 text-slate-600 px-6 py-3 rounded-2xl text-xs font-black shadow-sm hover:bg-slate-50 transition-all uppercase tracking-widest"
+      >
+        Editar Cardápio
+      </button>
+      <span>Sistema Online</span>
     </div>
   </header>
 
@@ -55,25 +64,98 @@
       Sincronizando pratos...
     </div>
   </main>
+
+  <div
+    id="modal-edicao"
+    class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+  >
+    <div
+      class="bg-white rounded-[2rem] w-full max-w-md p-6 shadow-2xl animate-card"
+    >
+      <h2
+        class="text-xl font-black text-slate-900 uppercase tracking-widest mb-6"
+      >
+        Editar Prato
+      </h2>
+      <input type="hidden" id="edit-id" />
+
+      <div class="space-y-4">
+        <div>
+          <label
+            class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
+            >Nome do Prato</label
+          >
+          <input
+            type="text"
+            id="edit-nome"
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+          />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
+              >Preço (R$)</label
+            >
+            <input
+              type="number"
+              step="0.01"
+              id="edit-preco"
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
+              >Estoque Atual</label
+            >
+            <input
+              type="number"
+              id="edit-estoque"
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 flex gap-3">
+        <button
+          onclick="fecharModal()"
+          class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+        >
+          Cancelar
+        </button>
+        <button
+          onclick="salvarEdicao()"
+          class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-blue-200"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
-  /* Ajuste da Scrollbar para o modo claro */
   .custom-scrollbar::-webkit-scrollbar {
     height: 8px;
   }
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9; /* slate-100 */
+    background: #f1f5f9;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1; /* slate-300 */
+    background: #cbd5e1;
     border-radius: 10px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8; /* slate-400 */
+    background: #94a3b8;
+  }
+  .animate-card {
+    animation: none; /* Desativado para evitar que pisque a cada refresh */
   }
 
-  .animate-card {
+  /* Se quiser animação, aplique apenas em novos itens via JS */
+  .card-novo {
     animation: slideUp 0.3s ease-out forwards;
   }
   @keyframes slideUp {

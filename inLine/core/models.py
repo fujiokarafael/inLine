@@ -21,6 +21,7 @@ class Pedido(models.Model):
         CANCELADO="CANCELADO"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    senha_numero = models.IntegerField(null=True, blank=True, db_index=True)
     tipo = models.CharField(max_length=20, choices=Tipo.choices, db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE, db_index=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
