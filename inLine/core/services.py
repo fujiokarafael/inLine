@@ -37,7 +37,7 @@ def create_order(tipo, itens, caixa=None):
     pedido = Pedido.objects.create(
         tipo=tipo, 
         total=0,
-        status=Pedido.Status.PRODUCAO,  # <--- Alterado de PENDENTE para PRODUCAO
+        status=Pedido.Status.PENDENTE,  # <--- Alterado de PENDENTE para PRODUCAO
         senha_numero=nova_senha,
         caixa=caixa                     # <--- Novo campo que identifica o operador
     )
