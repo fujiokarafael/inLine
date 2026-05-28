@@ -1,14 +1,15 @@
 {% extends "base.html" %} {% block content %}
+<!-- Fundo alterado para bg-slate-50 e texto para slate-900 -->
 <div
-  class="bg-slate-950 min-h-[calc(100vh-64px)] p-4 text-white overflow-hidden"
+  class="bg-slate-50 min-h-[calc(100vh-64px)] p-4 text-slate-900 overflow-hidden"
 >
   <div
-    class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4"
+    class="flex justify-between items-center mb-6 border-b border-slate-200 pb-4"
   >
     <div class="flex items-center gap-6">
       <a
         href="{% url 'dashboard-central' %}"
-        class="bg-white text-slate-900 p-3 rounded-2xl hover:bg-blue-500 hover:text-white shadow-lg transition-all flex items-center justify-center group"
+        class="bg-white text-slate-900 p-3 rounded-2xl hover:bg-blue-600 hover:text-white shadow-md border border-slate-100 transition-all flex items-center justify-center group"
         title="Voltar ao Painel Inicial"
       >
         <svg
@@ -27,12 +28,13 @@
         </svg>
       </a>
 
-      <h1 class="text-3xl font-black uppercase tracking-tighter text-amber-500">
+      <!-- Amber-600 tem melhor contraste no fundo claro que o Amber-500 -->
+      <h1 class="text-3xl font-black uppercase tracking-tighter text-amber-600">
         Fluxo de Produção
       </h1>
     </div>
 
-    <div id="relogio" class="text-3xl font-mono font-bold text-slate-500">
+    <div id="relogio" class="text-3xl font-mono font-bold text-slate-400">
       00:00:00
     </div>
   </div>
@@ -52,7 +54,7 @@
 
       if (dados.length === 0) {
         container.innerHTML = `
-          <div class="col-span-full flex flex-col items-center justify-center h-[60vh] text-slate-700">
+          <div class="col-span-full flex flex-col items-center justify-center h-[60vh] text-slate-300">
               <svg class="w-32 h-32 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
               </svg>
@@ -64,26 +66,27 @@
       container.innerHTML = dados
         .map(
           (item) => `
-            <div class="bg-slate-900 border-l-4 ${item.total_produzir > 5 ? "border-red-600" : "border-amber-500"} rounded-2xl p-6 flex flex-col justify-between shadow-2xl">
-                <h2 class="text-2xl font-black uppercase truncate text-slate-100 mb-4">${item.prato__nome}</h2>
-                
-                <div class="flex justify-between items-end">
-                    <div class="flex flex-col">
-                        <span class="text-slate-500 text-xs font-bold uppercase tracking-widest">A Produzir</span>
-                        <span class="text-7xl font-black leading-none ${item.total_produzir > 0 ? "text-amber-400" : "text-slate-700"}">
-                            ${item.total_produzir}
-                        </span>
-                    </div>
-                    
-                    <div class="flex flex-col items-end">
-                        <span class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Estoque</span>
-                        <span class="text-4xl font-black ${item.prato__estoque < 10 ? "text-red-500" : "text-slate-400"}">
-                            ${item.prato__estoque}
-                        </span>
-                    </div>
-                </div>
+    <div class="bg-white border border-slate-100 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+        <h2 class="text-2xl font-black uppercase truncate text-slate-800 mb-6">${item.prato__nome}</h2>
+        
+        <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="flex flex-col">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Em Espera</span>
+                <span class="text-5xl font-black text-slate-600">${item.espera}</span>
             </div>
-        `,
+            <div class="flex flex-col border-l border-r border-slate-100">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Em produção</span>
+                <span class="text-5xl font-black text-amber-500">${item.producao}</span>
+            </div>
+            <div class="flex flex-col">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Estoque</span>
+                <span class="text-5xl font-black ${item.prato__estoque < 5 ? "text-red-500" : "text-blue-500"}">
+                    ${item.prato__estoque}
+                </span>
+            </div>
+        </div>
+    </div>
+`,
         )
         .join("");
     } catch (e) {

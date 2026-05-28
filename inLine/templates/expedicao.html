@@ -1,0 +1,41 @@
+{% extends "base.html" %} {% load static %} {% block content %}
+<div class="h-screen bg-black text-white flex flex-col p-6 overflow-hidden">
+  <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+    <h2 class="text-slate-500 font-black uppercase tracking-widest">
+      Painel de Chamada
+    </h2>
+  </div>
+
+  <div class="flex-1 flex flex-col items-center justify-center animate-fade-in">
+    <p
+      class="text-slate-400 text-3xl font-bold uppercase tracking-[0.2em] mb-8"
+    >
+      Última Senha
+    </p>
+    <div
+      id="display-senha"
+      class="text-[25rem] font-black leading-none text-amber-500 drop-shadow-[0_0_50px_rgba(245,158,11,0.5)]"
+    >
+      ---
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.8s ease-out;
+  }
+</style>
+{% endblock %} {% block extra_js %}
+<script src="{% static 'js/expedicao.js' %}"></script>
+{% endblock %}

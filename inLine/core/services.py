@@ -1,8 +1,9 @@
+import random
+import uuid
 from decimal import Decimal
 from django.db import transaction, models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from uuid import UUID
 from .models import Pedido, FilaPrato, TMA, Prato
 from django.db.models import F
 
@@ -10,53 +11,97 @@ from django.db.models import F
 # CAIXA
 # =========================
 
+def gerar_senha_aleatoria():
+    # 1. Busca todas as senhas de pedidos que ainda estão rolando no restaurante
+    senhas_ativas = Pedido.objects.exclude(
+        status__in=[Pedido.Status.RETIRADO, Pedido.Status.CANCELADO]
+    ).values_list('senha_numero', flat=True)
+    
+    # 2. Sorteia um número de 4 dígitos (entre 1000 e 9999). 
+    # Se bater com a senha de alguém que ainda está esperando, sorteia outro.
+    while True:
+        senha = random.randint(1000, 9999)
+        if senha not in senhas_ativas:
+            return senha
+
 @transaction.atomic
 def create_order(tipo, itens):
-    # 1. Cria o pedido pai
-    pedido = Pedido.objects.create(tipo=tipo, total=0)
+    # Chama a nossa nova função de senha aleatória segura
+    nova_senha = gerar_senha_aleatoria()
+    # 1. O Pedido volta a nascer como PENDENTE
+    pedido = Pedido.objects.create(
+        tipo=tipo, 
+        total=0,
+        status=Pedido.Status.PENDENTE,
+        senha_numero=nova_senha
+    )
     total_acumulado = 0
 
     for item in itens:
         prato_id = item["prato_id"]
         qtd = int(item["quantidade"])
 
-        # Buscamos o prato travando a linha (FOR UPDATE)
         prato = Prato.objects.select_for_update().get(id=prato_id)
-
-        # BLOQUEIO: Impede estoque negativo no servidor
         if prato.estoque < qtd:
             raise ValueError(f"Estoque insuficiente para {prato.nome}")
 
-        # OPERAÇÃO ATÔMICA: Subtrai o estoque
-        # Se prato.save() estiver baixando 2 vezes, mude para o comando abaixo:
         Prato.objects.filter(id=prato_id).update(estoque=F('estoque') - qtd)
-        
-        # Atualiza a instância na memória apenas para o cálculo do total
         prato.refresh_from_db()
         total_acumulado += (prato.preco * qtd)
 
-        # 2. Cria os itens na fila (sem mexer no estoque aqui!)
         for _ in range(qtd):
             FilaPrato.objects.create(
                 pedido=pedido,
                 prato=prato,
-                preco_unitario=prato.preco
+                preco_unitario=prato.preco,
+                status=FilaPrato.Status.PENDENTE
             )
 
     pedido.total = total_acumulado
-    pedido.save()
+    pedido.save(update_fields=['total'])
     return pedido
+
+
+def iniciar_producao_item(fila_id):
+    # Força UUID se necessário
+    if isinstance(fila_id, str):
+        fila_id = uuid.UUID(fila_id)
+
+    item = FilaPrato.objects.select_related('pedido').get(id=fila_id)
+    
+    if not item.started_at:
+        item.started_at = timezone.now()  
+        item.status = FilaPrato.Status.EM_PRODUCAO
+        item.save(update_fields=['started_at', 'status'])
+        
+        # 2. A MÁGICA AQUI: Se o pedido pai ainda está PENDENTE, 
+        # o clique do cozinheiro muda ele para PRODUCAO automaticamente.
+        if item.pedido.status == Pedido.Status.PENDENTE:
+            item.pedido.status = Pedido.Status.PRODUCAO
+            item.pedido.save(update_fields=['status'])
+            
+    return item
 
 # =========================
 # INICIAR PRATO
 # =========================
 
 def iniciar_producao_item(fila_id):
+    # Força a conversão de string para UUID caso necessário para o banco
+    if isinstance(fila_id, str):
+        fila_id = uuid.UUID(fila_id)
+
     item = FilaPrato.objects.get(id=fila_id)
-    if not item.started_at:
-        item.started_at = timezone.now()  # Registra o início REAL
-        item.status = FilaPrato.Status.EM_PRODUCAO
+    # Validação segura por string (ignora se o started_at já existir por algum bug do banco)
+    if str(item.status) == 'PENDENTE':
+        item.started_at = timezone.now()  
+        item.status = 'EM_PRODUCAO'
         item.save(update_fields=['started_at', 'status'])
+        
+    # ATUALIZAÇÃO DO PAI: Se o pedido ainda está PENDENTE, vira PRODUCAO
+    if str(item.pedido.status) == 'PENDENTE':
+        item.pedido.status = 'PRODUCAO'
+        item.pedido.save(update_fields=['status'])
     return item
 
 # =========================
