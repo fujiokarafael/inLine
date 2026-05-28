@@ -25,16 +25,23 @@ def gerar_senha_aleatoria():
             return senha
 
 @transaction.atomic
-def create_order(tipo, itens):
-    # Chama a nossa nova função de senha aleatória segura
+def create_order(tipo, itens, caixa=None):
+    """
+    Cria um pedido associado a um caixa específico, deduz os itens do estoque
+    e define os status iniciais do fluxo.
+    """
+    # Chama a sua função existente de senha aleatória segura
     nova_senha = gerar_senha_aleatoria()
-    # 1. O Pedido volta a nascer como PENDENTE
+    
+    # GATILHO: O Pedido agora já nasce como PRODUCAO e recebe o caixa logado
     pedido = Pedido.objects.create(
         tipo=tipo, 
         total=0,
-        status=Pedido.Status.PENDENTE,
-        senha_numero=nova_senha
+        status=Pedido.Status.PRODUCAO,  # <--- Alterado de PENDENTE para PRODUCAO
+        senha_numero=nova_senha,
+        caixa=caixa                     # <--- Novo campo que identifica o operador
     )
+    
     total_acumulado = 0
 
     for item in itens:
@@ -50,6 +57,7 @@ def create_order(tipo, itens):
         total_acumulado += (prato.preco * qtd)
 
         for _ in range(qtd):
+            # Os itens da fila mantêm-se como PENDENTE aguardando a cozinha puxar
             FilaPrato.objects.create(
                 pedido=pedido,
                 prato=prato,
@@ -59,8 +67,8 @@ def create_order(tipo, itens):
 
     pedido.total = total_acumulado
     pedido.save(update_fields=['total'])
+    
     return pedido
-
 
 def iniciar_producao_item(fila_id):
     # Força UUID se necessário

@@ -36,6 +36,29 @@
         >
           Novo Pedido
         </h1>
+        <div class="flex items-center gap-4">
+          <h1
+            class="text-3xl font-black text-slate-800 tracking-tighter italic uppercase"
+          >
+            Novo Pedido
+          </h1>
+
+          <div
+            class="ml-4 flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm"
+          >
+            <label
+              class="text-[10px] font-black text-slate-400 uppercase tracking-widest"
+              >Terminal</label
+            >
+            <input
+              type="text"
+              id="input-terminal"
+              placeholder="Ex: 01"
+              onchange="salvarTerminalLocal()"
+              class="w-16 bg-slate-50 border-none rounded text-sm font-bold text-slate-800 text-center focus:ring-0 placeholder:text-slate-300"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="flex gap-2">

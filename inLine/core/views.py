@@ -14,6 +14,7 @@ from decimal import Decimal
 from django.db.models import F, Count, Q
 from django.views.generic import ListView
 from datetime import timedelta
+from rest_framework.permissions import IsAuthenticated
 
 from .services import (
     create_order,
@@ -23,6 +24,9 @@ from .services import (
     registrar_retirada_total_pedido,
 )
 from .models import Pedido, FilaPrato, Prato, TMA
+# =========================
+# CRIAR PRATO
+# =========================
 
 class CreatePratoAPIView(APIView):
     def post(self, request):
@@ -50,14 +54,20 @@ class CreatePratoAPIView(APIView):
 
 # views.py
 class CreateOrderAPIView(APIView):
+    # ADICIONE ESTAS DUAS LINHAS PARA RESOLVER O ERRO 403:
+    authentication_classes = []
+    permission_classes = []
+
     def post(self, request):
         tipo = request.data.get("tipo")
         itens = request.data.get("itens", [])
         
+        # A API recebe o texto que o JavaScript enviou (o número do terminal)
+        terminal_caixa = request.data.get("caixa", "Não Identificado")
+        
         try:
-            # GATILHO: Modifique seu 'create_order' no services para o pedido 
-            # já nascer como Pedido.Status.PRODUCAO e filas como PENDENTE.
-            pedido = create_order(tipo=tipo, itens=itens)
+            # Envia o texto para o service
+            pedido = create_order(tipo=tipo, itens=itens, caixa=terminal_caixa)
             
             host = request.get_host() 
             status_url = f"http://{host}/acompanhamento/{str(pedido.id)}/"
@@ -67,20 +77,13 @@ class CreateOrderAPIView(APIView):
                 "senha": str(pedido.senha_numero),
                 "tipo": pedido.tipo,
                 "total": float(pedido.total),
-                "status_url": status_url,
-                "itens": [
-                    {
-                        "prato": item.prato.nome, 
-                        "preco": float(item.preco_unitario)
-                    } for item in pedido.filas.all()
-                ]
+                "status_url": status_url
             }, status=status.HTTP_201_CREATED)
 
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
         except Exception as e:
-            return Response({"error": "Erro interno ao processar pedido."}, status=500)
-        
+            return Response({"error": "Erro interno ao processar pedido."}, status=500)       
 # =========================
 # LISTA DE PEDIDOS (CAIXA / FILA LÓGICA)
 # =========================
@@ -119,6 +122,7 @@ class AtendimentoListaAPIView(APIView):
                 "senha": str(p.senha_numero),
                 "tipo": p.tipo,
                 "status": p.status,
+                "caixa": p.caixa,
                 "total": float(p.total),
                 "criado_em": timezone.localtime(p.created_at).strftime("%H:%M"),
                 "itens": [

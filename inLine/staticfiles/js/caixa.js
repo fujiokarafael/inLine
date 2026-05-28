@@ -2,6 +2,20 @@ let carrinho = {};
 let modoEdicao = false;
 let pratosCache = [];
 let processandoPedido = false;
+let terminalAtual = localStorage.getItem("terminalCaixa") || "";
+
+// Função para salvar quando o operador digitar no campo
+function salvarTerminalLocal() {
+  const input = document.getElementById("input-terminal");
+  terminalAtual = input.value;
+  localStorage.setItem("terminalCaixa", terminalAtual);
+}
+
+// Dentro do seu window.onload, injete o valor salvo de volta no campo
+window.onload = () => {
+  carregarMenu();
+  document.getElementById("input-terminal").value = terminalAtual;
+};
 
 // Função para obter o CSRF Token do elemento HTML
 function getCsrfToken() {
@@ -115,26 +129,49 @@ function alterarQtd(id, delta) {
 
 async function finalizarPedido(tipo) {
   if (processandoPedido) return;
+
+  // 1. LÊ O VALOR DIRETO DO HTML NA HORA DO CLIQUE (À prova de falhas)
+  const inputTerminal = document.getElementById("input-terminal");
+  const terminalDigitado = inputTerminal ? inputTerminal.value.trim() : "";
+
+  // 2. TRAVA DE SEGURANÇA
+  if (!terminalDigitado) {
+    alert("⚠️ Informe o número do Terminal no topo da tela antes de vender!");
+    if (inputTerminal) inputTerminal.focus();
+    return;
+  }
+
+  // 3. Salva no localStorage para não perder caso atualize a página
+  localStorage.setItem("terminalCaixa", terminalDigitado);
+
   const itens = Object.keys(carrinho).map((id) => ({
     prato_id: id,
     quantidade: carrinho[id].qtd,
   }));
+
   if (itens.length === 0) return alert("Carrinho vazio!");
 
   try {
     processandoPedido = true;
+
+    // 4. O ENVIO GARANTIDO
     const res = await fetch("/api/v1/pedidos/criar/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": getCsrfToken(), // Chamada da função utilitária
+        "X-CSRFToken": getCsrfToken(),
       },
-      body: JSON.stringify({ tipo, itens }),
+      // Aqui garantimos que o valor lido da tela vai no JSON
+      body: JSON.stringify({
+        tipo: tipo,
+        itens: itens,
+        caixa: terminalDigitado,
+      }),
     });
 
     const dados = await res.json();
+
     if (res.ok) {
-      // Lógica de preenchimento do cupom
       document.getElementById("print-senha").innerText = dados.senha;
       document.getElementById("print-data").innerText =
         dados.criado_em || new Date().toLocaleTimeString();
@@ -145,23 +182,10 @@ async function finalizarPedido(tipo) {
       const corpoItens = document.getElementById("print-itens-corpo");
       corpoItens.innerHTML = Object.values(carrinho)
         .map(
-          (item) => `
-                <tr><td class="py-1">${item.qtd}x ${item.nome}</td><td class="text-right">R$ ${(item.preco * item.qtd).toFixed(2)}</td></tr>
-            `,
+          (item) =>
+            `<tr><td class="py-1">${item.qtd}x ${item.nome}</td><td class="text-right">R$ ${(item.preco * item.qtd).toFixed(2)}</td></tr>`,
         )
         .join("");
-
-      // QR Code
-      // const qrContainer = document.getElementById("qrcode-canvas");
-      // if (qrContainer) {
-      //   qrContainer.innerHTML = "";
-      //   let origin = window.location.origin;
-      //   let linkFinal =
-      //     dados.status_url && !dados.status_url.includes("localhost")
-      //       ? dados.status_url
-      //       : origin + "/acompanhamento/" + dados.id + "/";
-      //   new QRCode(qrContainer, { text: linkFinal, width: 128, height: 128 });
-      // }
 
       setTimeout(() => {
         window.print();

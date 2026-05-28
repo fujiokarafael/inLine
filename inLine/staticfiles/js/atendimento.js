@@ -73,6 +73,9 @@ function renderizarTabela() {
                     ${p.tipo}
                 </span>
             </td>
+            <td class="p-4 font-black text-lg text-slate-700">
+                ${p.caixa ? p.caixa : '<span class="text-slate-300 text-sm">N/I</span>'}
+            </td>
             <td class="p-4">
                 ${badgeStatus}
             </td>
@@ -80,31 +83,9 @@ function renderizarTabela() {
                 <button onclick="reimprimirCaixa('${p.id}')" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest text-slate-600 transition-all" title="Recibo Caixa">🖨️ Caixa</button>
                 <button onclick="reimprimirConferencia('${p.id}')" class="px-3 py-2 bg-amber-100 hover:bg-amber-200 rounded-xl font-bold text-xs uppercase tracking-widest text-amber-700 transition-all">📋 Montar</button> 
                 
-                ${
-                  // NOVO: O botão de Entregar só aparece se a cozinha finalizou o pedido
-                  p.status === "FINALIZADO"
-                    ? `
-                      <button onclick="retirarPedido('${p.id}')" 
-                              class="px-4 py-2 bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all">
-                          ✅ Entregar
-                      </button>
-                  `
-                    : ""
-                }
+                ${p.status === "FINALIZADO" ? `<button onclick="retirarPedido('${p.id}')" class="px-4 py-2 bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all">✅ Entregar</button>` : ""}
 
-                ${
-                  // O botão de cancelar continua aqui, mas não aparece se já foi entregue
-                  p.status !== "CANCELADO" &&
-                  p.status !== "FINALIZADO" &&
-                  p.status !== "RETIRADO"
-                    ? `
-                      <button onclick="alterarStatus('${p.id}', 'CANCELAR')" 
-                              class="px-4 py-2 bg-white text-red-500 border border-red-200 hover:bg-red-50 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all">
-                          ✕ Cancelar
-                      </button>
-                  `
-                    : ""
-                }
+                ${p.status !== "CANCELADO" && p.status !== "FINALIZADO" && p.status !== "RETIRADO" ? `<button onclick="alterarStatus('${p.id}', 'CANCELAR')" class="px-4 py-2 bg-white text-red-500 border border-red-200 hover:bg-red-50 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all">✕ Cancelar</button>` : ""}
             </td>
         </tr>
       `;

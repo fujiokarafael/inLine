@@ -202,6 +202,8 @@
             <th class="p-4">Hora</th>
             <th class="p-4">Senha</th>
             <th class="p-4">Tipo</th>
+            <th class="p-4">Caixa</th>
+
             <th
               class="p-4 cursor-pointer hover:bg-slate-700"
               onclick="ordenarPorStatus()"
@@ -220,5 +222,5 @@
   </div>
 </div>
 {% endblock %} {% block extra_js %}
-<script src="{% static 'js/atendimento.js' %}"></script>
+<script src="{% static 'js/atendimento.js' %}?v={% now 'U' %}"></script>
 {% endblock %}

@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.contrib.auth.models import User
 
 
 
@@ -27,10 +28,22 @@ class Pedido(models.Model):
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
+    updated_at = models.DateTimeField(auto_now=True, db_index=True) # Essencial para a fila da Expedição
+    caixa = models.CharField(
+        max_length=50, 
+        null=True, 
+        blank=True, 
+        help_text="Identificador digitado no terminal (Ex: Caixa 01)"
+    )
+
     class Meta:
         indexes = [
             models.Index(fields=["status", "tipo", "created_at"]),
+            models.Index(fields=["status", "updated_at"]),
         ]
+    
+    def __str__(self):
+        return f"Pedido #{self.senha_numero} - Terminal: {self.caixa or 'Não info'}"
 
 # =========================
 # PRATO (CATÁLOGO)
